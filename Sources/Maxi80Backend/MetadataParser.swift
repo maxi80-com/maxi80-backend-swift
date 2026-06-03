@@ -4,16 +4,37 @@ import FoundationEssentials
 import Foundation
 #endif
 
+/// A structure representing metadata for a radio track.
+///
+/// `TrackMetadata` holds the artist name and title extracted
+/// from a raw metadata string, typically received from an audio stream.
 public struct TrackMetadata: Sendable {
+    /// The name of the artist, or `nil` if it could not be determined.
     public let artist: String?
+    /// The title of the track, or `nil` if it could not be determined.
     public let title: String?
 
+    /// Creates a new track metadata instance.
+    ///
+    /// - Parameters:
+    ///   - artist: The artist name, or `nil` if unknown.
+    ///   - title: The track title, or `nil` if unknown.
     public init(artist: String?, title: String?) {
         self.artist = artist
         self.title = title
     }
 }
 
+/// Parses a raw metadata string into structured track metadata.
+///
+/// The parser splits the input on dash separators (`" - "` or `"-"`) to
+/// extract the artist and title. When no separator is found, the entire
+/// input is used as the title with `"Maxi80"` as the default artist.
+/// Trailing parenthetical content (e.g. remix annotations) is stripped
+/// from the title.
+///
+/// - Parameter input: The raw metadata string from the audio stream.
+/// - Returns: A ``TrackMetadata`` instance with the parsed artist and title.
 public func parseTrackMetadata(_ input: String) -> TrackMetadata {
     let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
 
