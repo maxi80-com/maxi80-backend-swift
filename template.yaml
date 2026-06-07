@@ -62,15 +62,18 @@ Resources:
                STREAM_URL: https://audio1.maxi80.com
                S3_BUCKET: !Ref MetadataBucket
                KEY_PREFIX: v2
-               SECRETS: Maxi80-AppleMusicKey
+               SECRETS: /maxi80/apple-music-key
                MAX_HISTORY_SIZE: 100
          Policies:
             - Statement:
                 - Effect: Allow
                   Action:
-                    - secretsmanager:GetSecretValue
-                    - secretsmanager:DescribeSecret
-                  Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:Maxi80-*"
+                    - ssm:GetParameter
+                  Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/maxi80/*"
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                  Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
                 - Effect: Allow
                   Action:
                     - s3:PutObject
@@ -85,7 +88,7 @@ Resources:
             ScheduleEvent:
                Type: Schedule
                Properties:
-                  Schedule: rate(2 minutes)
+                  Schedule: rate(3 minutes)
                   Enabled: true
       Metadata:
          BuildMethod: makefile

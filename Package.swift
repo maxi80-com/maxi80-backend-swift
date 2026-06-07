@@ -50,7 +50,7 @@ let package = Package(
                 ),
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "JWTKit", package: "jwt-kit"),
-                .product(name: "AWSSecretsManager", package: "aws-sdk-swift"),
+                .product(name: "AWSSSM", package: "aws-sdk-swift"),
                 .product(name: "AWSS3", package: "aws-sdk-swift"),
             ]
         ),

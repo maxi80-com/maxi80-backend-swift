@@ -36,7 +36,7 @@ struct IcecastMetadataCollector: LambdaHandler {
         }
 
         let keyPrefix = Lambda.env("KEY_PREFIX") ?? "collected"
-        let secretName = Lambda.env("SECRETS") ?? "Maxi80-AppleMusicKey"
+        let secretName = Lambda.env("SECRETS") ?? "/maxi80/apple-music-key"
 
         // Read the region from the environment variable
         let configuredRegion = Lambda.env("AWS_REGION").flatMap { Region(awsRegionName: $0) } ?? .eucentral1
@@ -50,10 +50,10 @@ struct IcecastMetadataCollector: LambdaHandler {
         )
 
         async let resolvedTokenFactory: JWTTokenFactory = {
-            let secretsManager = try SecretsManager<AppleMusicSecret>(
+            let parameterStore = try ParameterStoreManager<AppleMusicSecret>(
                 region: configuredRegion, logger: logger
             )
-            let secret = try await secretsManager.getSecret(secretName: secretName)
+            let secret = try await parameterStore.getSecret(parameterName: secretName)
             return JWTTokenFactory(
                 secretKey: secret.privateKey,
                 keyId: secret.keyId,

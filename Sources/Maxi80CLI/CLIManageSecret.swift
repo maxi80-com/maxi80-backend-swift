@@ -8,15 +8,15 @@ struct StoreSecrets: AsyncParsableCommand {
 
     public func run() async throws {
         let logger = GlobalOptions.logger(verbose: globalOptions.verbose)
-        let sm = try SecretsManager<AppleMusicSecret>(
+        let parameterStore = try ParameterStoreManager<AppleMusicSecret>(
             region: globalOptions.region,
             awsProfileName: globalOptions.profile,
             logger: logger
         )
 
         // Secret() lives in a separate file not saved to git
-        let arn = try await sm.storeSecret(secret: Secret.appleMusicSecret, secretName: Secret.name)
-        print("✅ your secret is stored. Arn = \(arn)")
+        let version = try await parameterStore.storeSecret(secret: Secret.appleMusicSecret, parameterName: Secret.name)
+        print("✅ your secret is stored. Version = \(version)")
     }
 }
 
@@ -27,14 +27,14 @@ struct GetSecrets: AsyncParsableCommand {
     public func run() async throws {
 
         let logger = GlobalOptions.logger(verbose: globalOptions.verbose)
-        let sm = try SecretsManager<AppleMusicSecret>(
+        let parameterStore = try ParameterStoreManager<AppleMusicSecret>(
             region: globalOptions.region,
             awsProfileName: globalOptions.profile,
             logger: logger
         )
 
         // Secret() lives in a separate file not saved to git
-        let secret = try await sm.getSecret(secretName: Secret.name)
+        let secret = try await parameterStore.getSecret(parameterName: Secret.name)
         print("✅ your secret is \(secret)")
     }
 }

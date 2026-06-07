@@ -28,14 +28,14 @@ struct Search: AsyncParsableCommand {
         // Initialize HTTP client
         let httpClient = MusicAPIClient()
 
-        // Get Apple Music credentials from secrets manager
-        let secretsManager = try SecretsManager<AppleMusicSecret>(
+        // Get Apple Music credentials from parameter store
+        let parameterStore = try ParameterStoreManager<AppleMusicSecret>(
             region: globalOptions.region,
             awsProfileName: globalOptions.profile,
             logger: logger
         )
 
-        let secret = try await secretsManager.getSecret(secretName: Secret.name)
+        let secret = try await parameterStore.getSecret(parameterName: Secret.name)
         logger.trace("Got secret \(secret)")
 
         let tokenFactory = JWTTokenFactory(
