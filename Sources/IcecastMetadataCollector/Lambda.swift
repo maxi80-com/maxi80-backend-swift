@@ -141,33 +141,41 @@ struct IcecastMetadataCollector: LambdaHandler {
             return
         }
 
-        // Step 3: Check S3 cache — skip if already collected
-        if try await s3Writer.exists(artist: artist, title: title) {
-            context.logger.info("Cache hit for \(artist)/\(title), skipping")
+        // Step 3: Check S3 cache — if already collected, reuse the cached metadata (including
+        // the dominant color) instead of calling Apple Music again.
+        if let cached = try await s3Writer.readMetadata(artist: artist, title: title) {
+            context.logger.info("Cache hit for \(artist)/\(title), skipping collection")
 
-            // Record history entry for cache hit
-            await recordHistory(artist: artist, title: title, file: "artwork.jpg", logger: context.logger)
+            // Backfill: legacy entries (collected before the color feature) have no color.
+            // Do a one-time Apple Music search to fetch it and rewrite metadata.json so
+            // future cache hits are free. A failed lookup records without color, never aborts.
+            var color = cached.color
+            if color == nil {
+                do {
+                    if let song = try await searchAppleMusic(artist: artist, title: title, logger: context.logger).song,
+                       let backfilled = dominantColor(for: song) {
+                        color = backfilled
+                        let updated = CollectedMetadata(
+                            rawMetadata: cached.rawMetadata, artist: cached.artist, title: cached.title,
+                            collectedAt: cached.collectedAt, color: backfilled
+                        )
+                        try await s3Writer.writeMetadata(updated, artist: artist, title: title, logger: context.logger)
+                        context.logger.info("Backfilled color \(backfilled) for cached \(artist) - \(title)")
+                    }
+                } catch {
+                    context.logger.warning("Color backfill failed on cache hit for \(artist) - \(title), recording without color: \(error)")
+                }
+            }
 
+            await recordHistory(artist: artist, title: title, file: "artwork.jpg", color: color, logger: context.logger)
             return
         }
 
         // Step 4: Search Apple Music
-        let searchFields = AppleMusicSearchType.items(searchTypes: [.songs])
-        let searchTerms = AppleMusicSearchType.term(search: "\(artist) \(title)")
-
-        let (searchData, _) = try await httpClient.apiCall(
-            url: AppleMusicEndpoint.search.url(args: [searchFields, searchTerms]),
-            method: .GET,
-            body: nil,
-            headers: try await authProvider.authorizationHeader(logger: context.logger),
-            timeout: 10,
-            logger: context.logger
-        )
-
-        let searchResponse = try JSONDecoder().decode(AppleMusicSearchResponse.self, from: searchData)
+        let (searchData, bestMatch) = try await searchAppleMusic(artist: artist, title: title, logger: context.logger)
 
         // Step 5: Select best match
-        guard let song = selectBestMatch(searchResponse) else {
+        guard let song = bestMatch else {
             context.logger.warning("No search results for \(artist) - \(title), skipping")
 
             // Record history entry even when Apple Music has no results
@@ -194,12 +202,17 @@ struct IcecastMetadataCollector: LambdaHandler {
             context.logger.warning("No artwork available for \(artist) - \(title)")
         }
 
+        // Derive the dominant color from Apple's bgColor and cache it in metadata.json,
+        // so future cache hits can reuse it without calling Apple Music again.
+        let artworkColor = dominantColor(for: song)
+
         // Step 7: Upload all three files to S3
         let collectedMetadata = CollectedMetadata(
             rawMetadata: rawMetadata,
             artist: artist,
             title: title,
-            collectedAt: Date.now.formatted(.iso8601)
+            collectedAt: Date.now.formatted(.iso8601),
+            color: artworkColor
         )
 
         try await s3Writer.writeMetadata(collectedMetadata, artist: artist, title: title, logger: context.logger)
@@ -208,9 +221,7 @@ struct IcecastMetadataCollector: LambdaHandler {
             try await s3Writer.writeArtwork(artworkData, artist: artist, title: title, logger: context.logger)
         }
 
-        // Record history entry for cache miss, deriving the dominant color from Apple's bgColor
-        let artworkColor = song.attributes.artwork
-            .flatMap { DominantColor().normalizedHex(fromAppleBgColor: $0.bgColor) }
+        // Record history entry for cache miss
         await recordHistory(artist: artist, title: title, file: artworkData != nil ? "artwork.jpg" : "nocover.jpg", color: artworkColor, logger: context.logger)
 
         context.logger.info("Successfully collected metadata for \(artist) - \(title)")
@@ -220,6 +231,29 @@ struct IcecastMetadataCollector: LambdaHandler {
         let artworkKey = buildS3Key(prefix: s3Writer.config.keyPrefix, artist: artist, title: title, file: file)
         let timestamp = Date.now.formatted(.iso8601)
         await historyManager.recordEntry(artist: artist, title: title, artworkKey: artworkKey, timestamp: timestamp, color: color, logger: logger)
+    }
+
+    /// Searches Apple Music and returns the raw response bytes plus the best-matching song (if any).
+    private func searchAppleMusic(artist: String, title: String, logger: Logger) async throws -> (data: Data, song: Song?) {
+        let searchFields = AppleMusicSearchType.items(searchTypes: [.songs])
+        let searchTerms = AppleMusicSearchType.term(search: "\(artist) \(title)")
+
+        let (searchData, _) = try await httpClient.apiCall(
+            url: AppleMusicEndpoint.search.url(args: [searchFields, searchTerms]),
+            method: .GET,
+            body: nil,
+            headers: try await authProvider.authorizationHeader(logger: logger),
+            timeout: 10,
+            logger: logger
+        )
+
+        let searchResponse = try JSONDecoder().decode(AppleMusicSearchResponse.self, from: searchData)
+        return (searchData, selectBestMatch(searchResponse))
+    }
+
+    /// Derives the dominant artwork color ("#RRGGBB") from Apple's bgColor, or nil when unavailable.
+    private func dominantColor(for song: Song) -> String? {
+        song.attributes.artwork.flatMap { DominantColor().normalizedHex(fromAppleBgColor: $0.bgColor) }
     }
 
     public static func main() async throws {

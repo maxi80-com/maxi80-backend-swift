@@ -1,6 +1,15 @@
 import Testing
 
 @testable import IcecastMetadataCollector
+@testable import Maxi80Backend
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
+
+import Logging
 
 @Suite("S3Writer Tests")
 struct S3WriterTests {
@@ -95,6 +104,89 @@ extension S3WriterTests {
         #expect(!pipeline.searchCalled, "Apple Music search should not be called when cache hit")
         #expect(!pipeline.artworkDownloadCalled, "Artwork download should not be called when cache hit")
         #expect(!pipeline.s3UploadCalled, "S3 upload should not be called when cache hit")
+    }
+}
+
+// MARK: - CollectedMetadata color encoding / decoding
+
+extension S3WriterTests {
+
+    private static let testLogger = Logger(label: "s3writer-test")
+
+    @Test("CollectedMetadata with a color round-trips and encodes the hex")
+    func collectedMetadata_withColor_roundTrips() throws {
+        let metadata = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t", color: "#3D2A1C")
+
+        let data = try JSONEncoder().encode(metadata)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(json.contains("\"color\":\"#3D2A1C\""))
+
+        let decoded = try JSONDecoder().decode(CollectedMetadata.self, from: data)
+        #expect(decoded.color == "#3D2A1C")
+    }
+
+    @Test("CollectedMetadata without a color omits the key — never null")
+    func collectedMetadata_withoutColor_omitsKey() throws {
+        let metadata = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t")
+
+        let data = try JSONEncoder().encode(metadata)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("color"))
+        #expect(!json.contains("null"))
+    }
+
+    @Test("Legacy metadata.json without a color key decodes with color == nil")
+    func collectedMetadata_legacy_decodesWithNilColor() throws {
+        let legacy = #"{"rawMetadata":"A - B","artist":"A","title":"B","collectedAt":"t"}"#
+        let data = try #require(legacy.data(using: .utf8))
+
+        let decoded = try JSONDecoder().decode(CollectedMetadata.self, from: data)
+        #expect(decoded.color == nil)
+    }
+}
+
+// MARK: - S3Writer readMetadata (cache-hit color reuse)
+
+extension S3WriterTests {
+
+    @Test("writeMetadata persists the color into metadata.json")
+    func writeMetadata_persistsColor() async throws {
+        let mockS3 = MockS3Client()
+        let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
+        let writer = S3Writer(config: config)
+
+        let metadata = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t", color: "#112233")
+        try await writer.writeMetadata(metadata, artist: "A", title: "B", logger: Self.testLogger)
+
+        let puts = await mockS3.getPutRecords()
+        let metadataPut = try #require(puts.first { $0.key == "v2/A/B/metadata.json" })
+        let decoded = try JSONDecoder().decode(CollectedMetadata.self, from: metadataPut.data)
+        #expect(decoded.color == "#112233")
+    }
+
+    @Test("readMetadata returns the cached color without any Apple Music call")
+    func readMetadata_returnsCachedColor() async throws {
+        let mockS3 = MockS3Client()
+        let cached = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t", color: "#AABBCC")
+        await mockS3.setGetObjectResult(try JSONEncoder().encode(cached))
+
+        let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
+        let writer = S3Writer(config: config)
+
+        let result = try await writer.readMetadata(artist: "A", title: "B")
+        #expect(result?.color == "#AABBCC")
+    }
+
+    @Test("readMetadata returns nil when metadata.json is absent")
+    func readMetadata_absent_returnsNil() async throws {
+        let mockS3 = MockS3Client()
+        await mockS3.setGetObjectResult(nil)
+
+        let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
+        let writer = S3Writer(config: config)
+
+        let result = try await writer.readMetadata(artist: "A", title: "B")
+        #expect(result == nil)
     }
 }
 

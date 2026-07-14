@@ -27,6 +27,15 @@ struct S3Writer {
         return try await config.s3Client.objectExists(bucket: config.bucket, key: key)
     }
 
+    /// Reads the previously collected metadata.json for this artist/title, or nil if absent/undecodable.
+    func readMetadata(artist: String, title: String) async throws -> CollectedMetadata? {
+        let key = buildS3Key(prefix: config.keyPrefix, artist: artist, title: title, file: "metadata.json")
+        guard let data = try await config.s3Client.getObject(bucket: config.bucket, key: key) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CollectedMetadata.self, from: data)
+    }
+
     func writeMetadata(_ metadata: CollectedMetadata, artist: String, title: String, logger: Logger) async throws {
         let key = buildS3Key(prefix: config.keyPrefix, artist: artist, title: title, file: "metadata.json")
         let data: Data
