@@ -177,11 +177,18 @@ struct IcecastMetadataCollector: LambdaHandler {
         }
         context.logger.info("Selected song: \(song.attributes.name) by \(song.attributes.artistName ?? "Unknown")")
 
-        // Step 6: Download artwork (if available)
+        // Step 6: Download artwork (if available). A failed download must not abort
+        // collection — treat it as no artwork so the track is still recorded in history.
         let artworkData: Data?
         if let artwork = song.attributes.artwork {
-            artworkData = try await artworkDownloader.download(artwork: artwork, logger: context.logger)
-            context.logger.info("Downloaded artwork: \(artworkData!.count) bytes")
+            do {
+                let data = try await artworkDownloader.download(artwork: artwork, logger: context.logger)
+                artworkData = data
+                context.logger.info("Downloaded artwork: \(data.count) bytes")
+            } catch {
+                artworkData = nil
+                context.logger.warning("Artwork download failed for \(artist) - \(title), continuing without artwork: \(error)")
+            }
         } else {
             artworkData = nil
             context.logger.warning("No artwork available for \(artist) - \(title)")
