@@ -45,6 +45,13 @@ call-unauthorized:
   -H "Authorization: wrong-key" \
   -H "Accept: application/json"
 
+STREAM_URL = https://audio1.maxi80.com
+
+# Print the current ICY StreamTitle from the live stream. Useful to check whether
+# the broadcaster is sending real track metadata or only the default filler title.
+stream-metadata:
+	@scripts/stream-metadata.sh $(STREAM_URL)
+
 logs-maxi80:
 	sam logs --stack-name $(SAM_STACK_NAME) --name Maxi80Lambda --region $(AWS_REGION) --profile $(AWS_PROFILE) --tail
 
