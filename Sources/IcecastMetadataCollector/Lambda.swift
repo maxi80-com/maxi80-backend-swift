@@ -201,16 +201,18 @@ struct IcecastMetadataCollector: LambdaHandler {
             try await s3Writer.writeArtwork(artworkData, artist: artist, title: title, logger: context.logger)
         }
 
-        // Record history entry for cache miss
-        await recordHistory(artist: artist, title: title, file: artworkData != nil ? "artwork.jpg" : "nocover.jpg", logger: context.logger)
+        // Record history entry for cache miss, deriving the dominant color from Apple's bgColor
+        let artworkColor = song.attributes.artwork
+            .flatMap { DominantColor().normalizedHex(fromAppleBgColor: $0.bgColor) }
+        await recordHistory(artist: artist, title: title, file: artworkData != nil ? "artwork.jpg" : "nocover.jpg", color: artworkColor, logger: context.logger)
 
         context.logger.info("Successfully collected metadata for \(artist) - \(title)")
     }
 
-    private func recordHistory(artist: String, title: String, file: String, logger: Logger) async {
+    private func recordHistory(artist: String, title: String, file: String, color: String? = nil, logger: Logger) async {
         let artworkKey = buildS3Key(prefix: s3Writer.config.keyPrefix, artist: artist, title: title, file: file)
         let timestamp = Date.now.formatted(.iso8601)
-        await historyManager.recordEntry(artist: artist, title: title, artworkKey: artworkKey, timestamp: timestamp, logger: logger)
+        await historyManager.recordEntry(artist: artist, title: title, artworkKey: artworkKey, timestamp: timestamp, color: color, logger: logger)
     }
 
     public static func main() async throws {

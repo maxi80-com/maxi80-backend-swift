@@ -12,6 +12,35 @@ struct HistoryEntry: Codable, Sendable, Equatable {
     let title: String
     let artwork: String    // Full S3 key, e.g. "collected/ArtistName/SongTitle/artwork.jpg"
     let timestamp: String  // ISO 8601 UTC, e.g. "2025-01-15T14:30:00Z"
+    let color: String?     // Dominant artwork color as "#RRGGBB" uppercase, or nil (omitted from JSON)
+
+    init(artist: String, title: String, artwork: String, timestamp: String, color: String? = nil) {
+        self.artist = artist
+        self.title = title
+        self.artwork = artwork
+        self.timestamp = timestamp
+        self.color = color
+    }
+
+    enum CodingKeys: String, CodingKey { case artist, title, artwork, timestamp, color }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        artist = try container.decode(String.self, forKey: .artist)
+        title = try container.decode(String.self, forKey: .title)
+        artwork = try container.decode(String.self, forKey: .artwork)
+        timestamp = try container.decode(String.self, forKey: .timestamp)
+        color = try container.decodeIfPresent(String.self, forKey: .color)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(artist, forKey: .artist)
+        try container.encode(title, forKey: .title)
+        try container.encode(artwork, forKey: .artwork)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(color, forKey: .color)
+    }
 }
 
 struct HistoryFile: Codable, Sendable, Equatable {
@@ -53,7 +82,7 @@ struct HistoryManager {
 
     /// Records a new history entry. Non-throwing — errors are logged internally.
     /// Skips writing if the most recent entry (by timestamp) already matches on artist, title, and artwork.
-    func recordEntry(artist: String, title: String, artworkKey: String, timestamp: String, logger: Logger) async {
+    func recordEntry(artist: String, title: String, artworkKey: String, timestamp: String, color: String? = nil, logger: Logger) async {
         var history: HistoryFile
         do {
             history = try await readHistory()
@@ -69,7 +98,7 @@ struct HistoryManager {
             return
         }
 
-        let entry = HistoryEntry(artist: artist, title: title, artwork: artworkKey, timestamp: timestamp)
+        let entry = HistoryEntry(artist: artist, title: title, artwork: artworkKey, timestamp: timestamp, color: color)
         let updated = Self.appendAndTrim(entry: entry, to: history, maxSize: maxHistorySize)
 
         do {

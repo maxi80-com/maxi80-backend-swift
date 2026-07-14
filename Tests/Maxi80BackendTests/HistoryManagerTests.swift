@@ -27,12 +27,19 @@ struct HistoryManagerTests {
             return String((0..<length).map { _ in chars[Int.random(in: 0..<chars.count, using: &rng)] })
         }
 
+        func randomHexColor() -> String? {
+            guard Bool.random(using: &rng) else { return nil }
+            let digits = "0123456789ABCDEF"
+            return "#" + String((0..<6).map { _ in digits.randomElement(using: &rng)! })
+        }
+
         func randomEntry() -> HistoryEntry {
             HistoryEntry(
                 artist: randomString(),
                 title: randomString(),
                 artwork: randomString(),
-                timestamp: randomString()
+                timestamp: randomString(),
+                color: randomHexColor()
             )
         }
 
@@ -76,12 +83,19 @@ extension HistoryManagerTests {
             return String((0..<length).map { _ in chars[Int.random(in: 0..<chars.count, using: &rng)] })
         }
 
+        func randomHexColor() -> String? {
+            guard Bool.random(using: &rng) else { return nil }
+            let digits = "0123456789ABCDEF"
+            return "#" + String((0..<6).map { _ in digits.randomElement(using: &rng)! })
+        }
+
         return (0..<count).map { _ in
             let entry = HistoryEntry(
                 artist: randomString(),
                 title: randomString(),
                 artwork: randomString(),
-                timestamp: randomString()
+                timestamp: randomString(),
+                color: randomHexColor()
             )
             return JSONStructureTestCase(entry: entry)
         }
@@ -97,13 +111,72 @@ extension HistoryManagerTests {
         let jsonObject = try JSONSerialization.jsonObject(with: data)
         let dict = try #require(jsonObject as? [String: Any])
 
-        let expectedKeys: Set<String> = ["artist", "title", "artwork", "timestamp"]
+        var expectedKeys: Set<String> = ["artist", "title", "artwork", "timestamp"]
+        if testCase.entry.color != nil { expectedKeys.insert("color") }
         #expect(Set(dict.keys) == expectedKeys, "Expected exactly keys \(expectedKeys), got \(Set(dict.keys))")
 
         #expect(dict["artist"] is String, "artist value should be a String")
         #expect(dict["title"] is String, "title value should be a String")
         #expect(dict["artwork"] is String, "artwork value should be a String")
         #expect(dict["timestamp"] is String, "timestamp value should be a String")
+        if testCase.entry.color != nil {
+            #expect(dict["color"] is String, "color value should be a String when present")
+        }
+    }
+}
+
+
+// MARK: - Color field encoding / decoding
+
+extension HistoryManagerTests {
+
+    @Test("Entry with a color encodes the hex string and round-trips")
+    func entryWithColor_roundTrips() throws {
+        let entry = HistoryEntry(artist: "Sandra", title: "Secret Land", artwork: "v2/Sandra/Secret Land/artwork.jpg", timestamp: "2026-07-13T10:54:27Z", color: "#3D2A1C")
+
+        let data = try JSONEncoder().encode(entry)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(json.contains("\"color\":\"#3D2A1C\""))
+
+        let decoded = try JSONDecoder().decode(HistoryEntry.self, from: data)
+        #expect(decoded == entry)
+        #expect(decoded.color == "#3D2A1C")
+    }
+
+    @Test("Entry without a color omits the key entirely — never null")
+    func entryWithoutColor_omitsKey() throws {
+        let entry = HistoryEntry(artist: "A", title: "B", artwork: "k", timestamp: "t")
+
+        let data = try JSONEncoder().encode(entry)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("color"))
+        #expect(!json.contains("null"))
+    }
+
+    @Test("Legacy JSON without a color key decodes with color == nil")
+    func legacyJSON_decodesWithNilColor() throws {
+        let legacy = #"{"artist":"A","title":"B","artwork":"k","timestamp":"t"}"#
+        let data = try #require(legacy.data(using: .utf8))
+
+        let decoded = try JSONDecoder().decode(HistoryEntry.self, from: data)
+        #expect(decoded.color == nil)
+        #expect(decoded == HistoryEntry(artist: "A", title: "B", artwork: "k", timestamp: "t"))
+    }
+
+    @Test("Mixed HistoryFile — colored and colorless entries all decode")
+    func mixedHistoryFile_allDecode() throws {
+        let entries = [
+            HistoryEntry(artist: "A", title: "B", artwork: "a.jpg", timestamp: "t1", color: "#112233"),
+            HistoryEntry(artist: "C", title: "D", artwork: "b.jpg", timestamp: "t2"),
+        ]
+        let file = HistoryFile(entries: entries)
+
+        let data = try JSONEncoder().encode(file)
+        let decoded = try JSONDecoder().decode(HistoryFile.self, from: data)
+
+        #expect(decoded == file)
+        #expect(decoded.entries[0].color == "#112233")
+        #expect(decoded.entries[1].color == nil)
     }
 }
 

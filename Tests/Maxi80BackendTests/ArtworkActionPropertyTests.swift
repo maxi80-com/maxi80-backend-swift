@@ -29,7 +29,7 @@ private func makeArtworkAction(
     )
 }
 
-private func makeEvent(artist: String, title: String) throws -> APIGatewayRequest {
+private func makeEvent(artist: String, title: String) throws -> APIGatewayV2Request {
     try TestHelpers.createAPIGatewayRequest(
         path: "/artwork",
         queryStringParameters: ["artist": artist, "title": title]
