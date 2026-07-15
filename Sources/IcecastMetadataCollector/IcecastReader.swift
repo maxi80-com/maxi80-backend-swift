@@ -8,7 +8,12 @@ import FoundationEssentials
 import Foundation
 #endif
 
-struct IcecastReader {
+/// Reads the current track metadata from an Icecast stream. Abstracted for dependency injection.
+protocol IcecastReading: Sendable {
+    func readMetadata(from streamURL: String, logger: Logger) async throws -> String
+}
+
+struct IcecastReader: IcecastReading {
 
     /// Connects to an Icecast stream and extracts the first non-empty StreamTitle metadata.
     func readMetadata(from streamURL: String, logger: Logger) async throws -> String {

@@ -9,7 +9,12 @@ import FoundationEssentials
 import Foundation
 #endif
 
-struct ArtworkDownloader {
+/// Downloads artwork image data for a matched song. Abstracted for dependency injection.
+protocol ArtworkDownloading: Sendable {
+    func download(artwork: Song.Attributes.Artwork, logger: Logger) async throws -> Data
+}
+
+struct ArtworkDownloader: ArtworkDownloading {
 
     func download(artwork: Song.Attributes.Artwork, logger: Logger) async throws -> Data {
         let urlString = buildArtworkURL(

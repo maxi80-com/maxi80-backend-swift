@@ -16,6 +16,10 @@ public actor MockS3Client: S3ManagerProtocol {
     private var presignExpirations: [TimeInterval] = []
     private var putRecords: [(data: Data, bucket: String, key: String, contentType: String)] = []
     private var getObjectResults: [Data?] = []
+    /// Key-addressed responses. When a key is present here it takes precedence over the sequential
+    /// `getObjectResults` queue — useful for tests that issue getObject in a hard-to-predict order.
+    private var getObjectByKey: [String: Data] = [:]
+    private var useKeyedGetObject = false
     private var copyRecords: [(bucket: String, fromKey: String, toKey: String)] = []
     private var deleteRecords: [(bucket: String, key: String)] = []
     private var existsIndex = 0
@@ -56,9 +60,15 @@ public actor MockS3Client: S3ManagerProtocol {
 
     public func putObject(data: Data, bucket: String, key: String, contentType: String) async throws {
         putRecords.append((data: data, bucket: bucket, key: key, contentType: contentType))
+        if useKeyedGetObject {
+            getObjectByKey[key] = data
+        }
     }
 
     public func getObject(bucket: String, key: String) async throws -> Data? {
+        if useKeyedGetObject {
+            return getObjectByKey[key]
+        }
         guard getObjectIndex < getObjectResults.count else {
             return nil
         }
@@ -69,13 +79,24 @@ public actor MockS3Client: S3ManagerProtocol {
 
     public func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
         copyRecords.append((bucket: bucket, fromKey: fromKey, toKey: toKey))
+        if let data = getObjectByKey[fromKey] {
+            getObjectByKey[toKey] = data
+        }
     }
 
     public func deleteObject(bucket: String, key: String) async throws {
         deleteRecords.append((bucket: bucket, key: key))
+        getObjectByKey[key] = nil
     }
 
     // MARK: - Test helpers
+
+    /// Register a key-addressed getObject response. Enables keyed mode so tests can model an
+    /// arbitrary set of existing objects regardless of call order.
+    public func setObject(key: String, data: Data) {
+        useKeyedGetObject = true
+        getObjectByKey[key] = data
+    }
 
     public func getCopyRecords() -> [(bucket: String, fromKey: String, toKey: String)] {
         copyRecords
@@ -121,6 +142,8 @@ public actor MockS3Client: S3ManagerProtocol {
         presignExpirations.removeAll()
         putRecords.removeAll()
         getObjectResults.removeAll()
+        getObjectByKey.removeAll()
+        useKeyedGetObject = false
         copyRecords.removeAll()
         deleteRecords.removeAll()
         existsIndex = 0
