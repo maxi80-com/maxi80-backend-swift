@@ -9,7 +9,7 @@ format:
 	swift format -i -r Package.swift Sources Tests
 
 build:
-	swift package --allow-network-connections docker archive --disable-docker-image-update --base-docker-image swift:amazonlinux2023 --products IcecastMetadataCollector --products Maxi80Lambda --products AuthorizerLambda
+	swift package --disable-sandbox --allow-network-connections docker lambda-build --disable-docker-image-update --base-docker-image swift:amazonlinux2023 --products IcecastMetadataCollector --products Maxi80Lambda --products AuthorizerLambda
 	
 test:
 	swift test
