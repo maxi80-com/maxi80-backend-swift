@@ -7,11 +7,11 @@ import Foundation
 #endif
 
 /// Mock S3 client for testing
-public actor MockS3Client: S3ManagerProtocol {
+actor MockS3Client: S3ManagerProtocol {
 
     private var existsResults: [Bool] = []
     private var presignedURLs: [String] = []
-    private var errors: [Error] = []
+    private var errors: [any Error] = []
     private var callRecords: [(bucket: String, key: String)] = []
     private var presignExpirations: [TimeInterval] = []
     private var putRecords: [(data: Data, bucket: String, key: String, contentType: String)] = []
@@ -26,9 +26,9 @@ public actor MockS3Client: S3ManagerProtocol {
     private var presignIndex = 0
     private var getObjectIndex = 0
 
-    public init() {}
+    init() {}
 
-    public func objectExists(bucket: String, key: String) async throws -> Bool {
+    func objectExists(bucket: String, key: String) async throws -> Bool {
         callRecords.append((bucket: bucket, key: key))
 
         if existsIndex < errors.count {
@@ -46,7 +46,7 @@ public actor MockS3Client: S3ManagerProtocol {
         return result
     }
 
-    public func presignedGetURL(bucket: String, key: String, expiration: TimeInterval) async throws -> URL {
+    func presignedGetURL(bucket: String, key: String, expiration: TimeInterval) async throws -> URL {
         presignExpirations.append(expiration)
 
         guard presignIndex < presignedURLs.count else {
@@ -58,14 +58,14 @@ public actor MockS3Client: S3ManagerProtocol {
         return URL(string: result)!
     }
 
-    public func putObject(data: Data, bucket: String, key: String, contentType: String) async throws {
+    func putObject(data: Data, bucket: String, key: String, contentType: String) async throws {
         putRecords.append((data: data, bucket: bucket, key: key, contentType: contentType))
         if useKeyedGetObject {
             getObjectByKey[key] = data
         }
     }
 
-    public func getObject(bucket: String, key: String) async throws -> Data? {
+    func getObject(bucket: String, key: String) async throws -> Data? {
         if useKeyedGetObject {
             return getObjectByKey[key]
         }
@@ -77,14 +77,14 @@ public actor MockS3Client: S3ManagerProtocol {
         return result
     }
 
-    public func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
+    func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
         copyRecords.append((bucket: bucket, fromKey: fromKey, toKey: toKey))
         if let data = getObjectByKey[fromKey] {
             getObjectByKey[toKey] = data
         }
     }
 
-    public func deleteObject(bucket: String, key: String) async throws {
+    func deleteObject(bucket: String, key: String) async throws {
         deleteRecords.append((bucket: bucket, key: key))
         getObjectByKey[key] = nil
     }
@@ -93,48 +93,48 @@ public actor MockS3Client: S3ManagerProtocol {
 
     /// Register a key-addressed getObject response. Enables keyed mode so tests can model an
     /// arbitrary set of existing objects regardless of call order.
-    public func setObject(key: String, data: Data) {
+    func setObject(key: String, data: Data) {
         useKeyedGetObject = true
         getObjectByKey[key] = data
     }
 
-    public func getCopyRecords() -> [(bucket: String, fromKey: String, toKey: String)] {
+    func getCopyRecords() -> [(bucket: String, fromKey: String, toKey: String)] {
         copyRecords
     }
 
-    public func getDeleteRecords() -> [(bucket: String, key: String)] {
+    func getDeleteRecords() -> [(bucket: String, key: String)] {
         deleteRecords
     }
 
-    public func setExists(_ exists: Bool) {
+    func setExists(_ exists: Bool) {
         existsResults.append(exists)
     }
 
-    public func setPresignedURL(_ url: String) {
+    func setPresignedURL(_ url: String) {
         presignedURLs.append(url)
     }
 
-    public func setError(_ error: Error) {
+    func setError(_ error: any Error) {
         errors.append(error)
     }
 
-    public func setGetObjectResult(_ data: Data?) {
+    func setGetObjectResult(_ data: Data?) {
         getObjectResults.append(data)
     }
 
-    public func getCallRecords() -> [(bucket: String, key: String)] {
+    func getCallRecords() -> [(bucket: String, key: String)] {
         callRecords
     }
 
-    public func getPresignExpirations() -> [TimeInterval] {
+    func getPresignExpirations() -> [TimeInterval] {
         presignExpirations
     }
 
-    public func getPutRecords() -> [(data: Data, bucket: String, key: String, contentType: String)] {
+    func getPutRecords() -> [(data: Data, bucket: String, key: String, contentType: String)] {
         putRecords
     }
 
-    public func reset() {
+    func reset() {
         existsResults.removeAll()
         presignedURLs.removeAll()
         errors.removeAll()

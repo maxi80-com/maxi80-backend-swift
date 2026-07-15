@@ -1,12 +1,12 @@
 import AsyncHTTPClient
-import Logging
+public import Logging
 import NIOCore
-import NIOHTTP1
+public import NIOHTTP1
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 // Protocol for dependency injection and testing

@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Logging
 import Maxi80Backend
 import NIOCore
+import NIOHTTP1
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -18,7 +19,9 @@ struct ArtworkDownloader: ArtworkDownloading {
 
     func download(artwork: Song.Attributes.Artwork, logger: Logger) async throws -> Data {
         let urlString = buildArtworkURL(
-            template: artwork.url, width: artwork.width, height: artwork.height
+            template: artwork.url,
+            width: artwork.width,
+            height: artwork.height
         )
 
         logger.debug("Downloading artwork from: \(urlString)")
@@ -38,7 +41,7 @@ struct ArtworkDownloader: ArtworkDownloading {
         }
 
         guard let bytes = try? await response.body.collect(upTo: 10 * 1024 * 1024)  // 10MB max
-        else {        
+        else {
             throw CollectorError.artworkDownloadFailed(reason: "Empty response body")
         }
         return Data(bytes.readableBytesView)

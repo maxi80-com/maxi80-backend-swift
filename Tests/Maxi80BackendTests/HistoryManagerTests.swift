@@ -1,12 +1,12 @@
 import Testing
 
+@testable import IcecastMetadataCollector
+
 #if canImport(FoundationEssentials)
 import FoundationEssentials
 #else
 import Foundation
 #endif
-
-@testable import IcecastMetadataCollector
 
 @Suite("HistoryManager Tests")
 struct HistoryManagerTests {
@@ -52,8 +52,10 @@ struct HistoryManagerTests {
 
     // Feature: lookup-history, Property 1: Serialization round-trip
     /// **Validates: Requirements 7.1, 1.4**
-    @Test("Property 1: Serialization round-trip",
-          arguments: generateSerializationTestCases(count: 100))
+    @Test(
+        "Property 1: Serialization round-trip",
+        arguments: generateSerializationTestCases(count: 100)
+    )
     func serializationRoundTrip(testCase: SerializationTestCase) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -103,8 +105,10 @@ extension HistoryManagerTests {
 
     // Feature: lookup-history, Property 2: Serialized JSON structure contains required keys
     /// **Validates: Requirements 1.1, 1.2**
-    @Test("Property 2: Serialized JSON structure contains required keys",
-          arguments: generateJSONStructureTestCases(count: 100))
+    @Test(
+        "Property 2: Serialized JSON structure contains required keys",
+        arguments: generateJSONStructureTestCases(count: 100)
+    )
     func jsonStructureContainsRequiredKeys(testCase: JSONStructureTestCase) throws {
         let data = try JSONEncoder().encode(testCase.entry)
 
@@ -125,14 +129,19 @@ extension HistoryManagerTests {
     }
 }
 
-
 // MARK: - Color field encoding / decoding
 
 extension HistoryManagerTests {
 
     @Test("Entry with a color encodes the hex string and round-trips")
     func entryWithColor_roundTrips() throws {
-        let entry = HistoryEntry(artist: "Sandra", title: "Secret Land", artwork: "v2/Sandra/Secret Land/artwork.jpg", timestamp: "2026-07-13T10:54:27Z", color: "#3D2A1C")
+        let entry = HistoryEntry(
+            artist: "Sandra",
+            title: "Secret Land",
+            artwork: "v2/Sandra/Secret Land/artwork.jpg",
+            timestamp: "2026-07-13T10:54:27Z",
+            color: "#3D2A1C"
+        )
 
         let data = try JSONEncoder().encode(entry)
         let json = try #require(String(data: data, encoding: .utf8))
@@ -180,7 +189,6 @@ extension HistoryManagerTests {
     }
 }
 
-
 // MARK: - Property 3: Size invariant after append-and-trim
 
 extension HistoryManagerTests {
@@ -222,8 +230,10 @@ extension HistoryManagerTests {
 
     // Feature: lookup-history, Property 3: Size invariant after append-and-trim
     /// **Validates: Requirements 2.1, 4.3**
-    @Test("Property 3: Size invariant after append-and-trim",
-          arguments: generateSizeInvariantTestCases(count: 100))
+    @Test(
+        "Property 3: Size invariant after append-and-trim",
+        arguments: generateSizeInvariantTestCases(count: 100)
+    )
     func sizeInvariantAfterAppendAndTrim(testCase: SizeInvariantTestCase) {
         let result = HistoryManager.appendAndTrim(
             entry: testCase.newEntry,
@@ -232,11 +242,12 @@ extension HistoryManagerTests {
         )
 
         let expectedCount = min(testCase.historyFile.entries.count + 1, testCase.maxSize)
-        #expect(result.entries.count == expectedCount,
-                "Expected \(expectedCount) entries (min(\(testCase.historyFile.entries.count) + 1, \(testCase.maxSize))), got \(result.entries.count)")
+        #expect(
+            result.entries.count == expectedCount,
+            "Expected \(expectedCount) entries (min(\(testCase.historyFile.entries.count) + 1, \(testCase.maxSize))), got \(result.entries.count)"
+        )
     }
 }
-
 
 // MARK: - Property 4: Ordering — new entry is last, oldest trimmed first
 
@@ -279,8 +290,10 @@ extension HistoryManagerTests {
 
     // Feature: lookup-history, Property 4: Ordering — new entry is last, oldest trimmed first
     /// **Validates: Requirements 2.3, 4.4**
-    @Test("Property 4: Ordering — new entry is last, oldest trimmed first",
-          arguments: generateOrderingTestCases(count: 100))
+    @Test(
+        "Property 4: Ordering — new entry is last, oldest trimmed first",
+        arguments: generateOrderingTestCases(count: 100)
+    )
     func orderingNewEntryIsLastOldestTrimmedFirst(testCase: OrderingTestCase) {
         let result = HistoryManager.appendAndTrim(
             entry: testCase.newEntry,
@@ -289,17 +302,20 @@ extension HistoryManagerTests {
         )
 
         // The last element must be the newly appended entry
-        #expect(result.entries.last == testCase.newEntry,
-                "Last entry should be the newly appended entry")
+        #expect(
+            result.entries.last == testCase.newEntry,
+            "Last entry should be the newly appended entry"
+        )
 
         // The preceding entries (all but last) must be a suffix of the original entries array
         let preceding = Array(result.entries.dropLast())
         let originalSuffix = Array(testCase.historyFile.entries.suffix(preceding.count))
-        #expect(preceding == originalSuffix,
-                "Preceding entries should be a suffix of the original entries array")
+        #expect(
+            preceding == originalSuffix,
+            "Preceding entries should be a suffix of the original entries array"
+        )
     }
 }
-
 
 // MARK: - Property 5: Duplicate entries are preserved
 
@@ -310,7 +326,9 @@ extension HistoryManagerTests {
         let newEntry: HistoryEntry
         let originalEntry: HistoryEntry
         let maxSize: Int
-        var description: String { "entries=\(historyFile.entries.count), duplicate artist='\(newEntry.artist)', title='\(newEntry.title)'" }
+        var description: String {
+            "entries=\(historyFile.entries.count), duplicate artist='\(newEntry.artist)', title='\(newEntry.title)'"
+        }
     }
 
     static func generateDuplicateTestCases(count: Int) -> [DuplicateTestCase] {
@@ -362,8 +380,10 @@ extension HistoryManagerTests {
 
     // Feature: lookup-history, Property 5: Duplicate entries are preserved
     /// **Validates: Requirements 2.2**
-    @Test("Property 5: Duplicate entries are preserved",
-          arguments: generateDuplicateTestCases(count: 100))
+    @Test(
+        "Property 5: Duplicate entries are preserved",
+        arguments: generateDuplicateTestCases(count: 100)
+    )
     func duplicateEntriesArePreserved(testCase: DuplicateTestCase) {
         let result = HistoryManager.appendAndTrim(
             entry: testCase.newEntry,
@@ -372,22 +392,27 @@ extension HistoryManagerTests {
         )
 
         // The original entry should still be present in the result
-        #expect(result.entries.contains(testCase.originalEntry),
-                "Original entry should still be present — no deduplication")
+        #expect(
+            result.entries.contains(testCase.originalEntry),
+            "Original entry should still be present — no deduplication"
+        )
 
         // The new entry (same artist/title, different artwork/timestamp) should also be present
-        #expect(result.entries.contains(testCase.newEntry),
-                "New duplicate entry should also be present in the result")
+        #expect(
+            result.entries.contains(testCase.newEntry),
+            "New duplicate entry should also be present in the result"
+        )
 
         // Both entries should exist — verify at least 2 entries share the same artist/title
         let matchingEntries = result.entries.filter {
             $0.artist == testCase.newEntry.artist && $0.title == testCase.newEntry.title
         }
-        #expect(matchingEntries.count >= 2,
-                "At least 2 entries with the same artist/title should exist, got \(matchingEntries.count)")
+        #expect(
+            matchingEntries.count >= 2,
+            "At least 2 entries with the same artist/title should exist, got \(matchingEntries.count)"
+        )
     }
 }
-
 
 // MARK: - Edge Case Unit Tests
 
@@ -397,7 +422,12 @@ extension HistoryManagerTests {
     @Test("appendAndTrim with empty HistoryFile produces exactly one entry")
     func appendToEmptyHistory() {
         let emptyHistory = HistoryFile(entries: [])
-        let entry = HistoryEntry(artist: "Duran Duran", title: "Rio", artwork: "collected/Duran Duran/Rio/artwork.jpg", timestamp: "2025-07-15T14:30:00Z")
+        let entry = HistoryEntry(
+            artist: "Duran Duran",
+            title: "Rio",
+            artwork: "collected/Duran Duran/Rio/artwork.jpg",
+            timestamp: "2025-07-15T14:30:00Z"
+        )
 
         let result = HistoryManager.appendAndTrim(entry: entry, to: emptyHistory, maxSize: 10)
 
@@ -410,14 +440,27 @@ extension HistoryManagerTests {
     func trimmingAtBoundary() {
         let maxSize = 5
         let originalEntries = (0..<maxSize).map { i in
-            HistoryEntry(artist: "Artist \(i)", title: "Title \(i)", artwork: "art/\(i).jpg", timestamp: "2025-07-15T14:0\(i):00Z")
+            HistoryEntry(
+                artist: "Artist \(i)",
+                title: "Title \(i)",
+                artwork: "art/\(i).jpg",
+                timestamp: "2025-07-15T14:0\(i):00Z"
+            )
         }
         let history = HistoryFile(entries: originalEntries)
-        let newEntry = HistoryEntry(artist: "New Artist", title: "New Title", artwork: "art/new.jpg", timestamp: "2025-07-15T15:00:00Z")
+        let newEntry = HistoryEntry(
+            artist: "New Artist",
+            title: "New Title",
+            artwork: "art/new.jpg",
+            timestamp: "2025-07-15T15:00:00Z"
+        )
 
         let result = HistoryManager.appendAndTrim(entry: newEntry, to: history, maxSize: maxSize)
 
-        #expect(result.entries.count == maxSize, "Count should stay at maxSize (\(maxSize)), not \(result.entries.count)")
+        #expect(
+            result.entries.count == maxSize,
+            "Count should stay at maxSize (\(maxSize)), not \(result.entries.count)"
+        )
         #expect(result.entries.last == newEntry, "Last entry should be the newly appended one")
         #expect(!result.entries.contains(originalEntries[0]), "First original entry should have been trimmed")
     }
@@ -426,10 +469,20 @@ extension HistoryManagerTests {
     @Test("appendAndTrim with maxSize = 1 always produces single-entry result")
     func maxSizeOneProducesSingleEntry() {
         let entries = (0..<3).map { i in
-            HistoryEntry(artist: "Artist \(i)", title: "Title \(i)", artwork: "art/\(i).jpg", timestamp: "2025-07-15T14:0\(i):00Z")
+            HistoryEntry(
+                artist: "Artist \(i)",
+                title: "Title \(i)",
+                artwork: "art/\(i).jpg",
+                timestamp: "2025-07-15T14:0\(i):00Z"
+            )
         }
         let history = HistoryFile(entries: entries)
-        let newEntry = HistoryEntry(artist: "Solo Artist", title: "Solo Title", artwork: "art/solo.jpg", timestamp: "2025-07-15T15:00:00Z")
+        let newEntry = HistoryEntry(
+            artist: "Solo Artist",
+            title: "Solo Title",
+            artwork: "art/solo.jpg",
+            timestamp: "2025-07-15T15:00:00Z"
+        )
 
         let result = HistoryManager.appendAndTrim(entry: newEntry, to: history, maxSize: 1)
 

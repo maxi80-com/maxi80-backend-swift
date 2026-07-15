@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Logging
 import NIOCore
+import NIOHTTP1
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -37,7 +38,7 @@ extension Logger {
         self.trace("\(output)")
     }
 
-    func response(_ response: HTTPClientResponse, data: Data?, error: Error?) {
+    func response(_ response: HTTPClientResponse, data: Data?, error: (any Error)?) {
         self.trace("\n - - - - - - - - - - INCOMING - - - - - - - - - - \n")
         defer { self.trace("\n - - - - - - - - - -  END - - - - - - - - - - \n") }
         var output = "HTTP \(response.status.code)\n"

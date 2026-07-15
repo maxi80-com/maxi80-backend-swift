@@ -1,5 +1,6 @@
 import Logging
 import Maxi80Backend
+import NIOHTTP1
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -64,7 +65,8 @@ struct MetadataCollector {
         do {
             let history = try await historyManager.readHistory()
             if let latest = history.entries.max(by: { $0.timestamp < $1.timestamp }),
-               latest.artist == artist, latest.title == title {
+                latest.artist == artist, latest.title == title
+            {
                 logger.info("Same track as latest history entry (\(artist) - \(title)), skipping")
                 return
             }
@@ -92,17 +94,23 @@ struct MetadataCollector {
             if color == nil {
                 do {
                     if let song = try await searchAppleMusic(artist: artist, title: title, logger: logger).song,
-                       let backfilled = dominantColor(for: song) {
+                        let backfilled = dominantColor(for: song)
+                    {
                         color = backfilled
                         let updated = CollectedMetadata(
-                            rawMetadata: cached.rawMetadata, artist: cached.artist, title: cached.title,
-                            collectedAt: cached.collectedAt, color: backfilled
+                            rawMetadata: cached.rawMetadata,
+                            artist: cached.artist,
+                            title: cached.title,
+                            collectedAt: cached.collectedAt,
+                            color: backfilled
                         )
                         try await s3Writer.writeMetadata(updated, artist: artist, title: title, logger: logger)
                         logger.info("Backfilled color \(backfilled) for cached \(artist) - \(title)")
                     }
                 } catch {
-                    logger.warning("Color backfill failed on cache hit for \(artist) - \(title), recording without color: \(error)")
+                    logger.warning(
+                        "Color backfill failed on cache hit for \(artist) - \(title), recording without color: \(error)"
+                    )
                 }
             }
 
@@ -124,7 +132,13 @@ struct MetadataCollector {
 
                     for file in ["artwork.jpg", "search.json", "metadata.json"] {
                         do {
-                            try await s3Writer.copyFile(file, artist: artist, fromTitle: stripped, toTitle: title, logger: logger)
+                            try await s3Writer.copyFile(
+                                file,
+                                artist: artist,
+                                fromTitle: stripped,
+                                toTitle: title,
+                                logger: logger
+                            )
                         } catch {
                             // artwork.jpg may be absent (nocover tracks); other files should exist.
                             logger.warning("Migration copy of \(file) failed for \(artist) - \(stripped): \(error)")
@@ -133,12 +147,21 @@ struct MetadataCollector {
 
                     // Rewrite the copied metadata.json so its title matches the full-title key.
                     let migrated = CollectedMetadata(
-                        rawMetadata: legacy.rawMetadata, artist: legacy.artist, title: title,
-                        collectedAt: legacy.collectedAt, color: legacy.color
+                        rawMetadata: legacy.rawMetadata,
+                        artist: legacy.artist,
+                        title: title,
+                        collectedAt: legacy.collectedAt,
+                        color: legacy.color
                     )
                     try await s3Writer.writeMetadata(migrated, artist: artist, title: title, logger: logger)
 
-                    await recordHistory(artist: artist, title: title, file: "artwork.jpg", color: legacy.color, logger: logger)
+                    await recordHistory(
+                        artist: artist,
+                        title: title,
+                        file: "artwork.jpg",
+                        color: legacy.color,
+                        logger: logger
+                    )
 
                     for file in ["artwork.jpg", "search.json", "metadata.json"] {
                         do {
@@ -205,19 +228,37 @@ struct MetadataCollector {
         }
 
         // Record history entry for cache miss
-        await recordHistory(artist: artist, title: title, file: artworkData != nil ? "artwork.jpg" : "nocover.jpg", color: artworkColor, logger: logger)
+        await recordHistory(
+            artist: artist,
+            title: title,
+            file: artworkData != nil ? "artwork.jpg" : "nocover.jpg",
+            color: artworkColor,
+            logger: logger
+        )
 
         logger.info("Successfully collected metadata for \(artist) - \(title)")
     }
 
-    private func recordHistory(artist: String, title: String, file: String, color: String? = nil, logger: Logger) async {
+    private func recordHistory(artist: String, title: String, file: String, color: String? = nil, logger: Logger) async
+    {
         let artworkKey = buildS3Key(prefix: s3Writer.config.keyPrefix, artist: artist, title: title, file: file)
         let timestamp = Date.now.formatted(.iso8601)
-        await historyManager.recordEntry(artist: artist, title: title, artworkKey: artworkKey, timestamp: timestamp, color: color, logger: logger)
+        await historyManager.recordEntry(
+            artist: artist,
+            title: title,
+            artworkKey: artworkKey,
+            timestamp: timestamp,
+            color: color,
+            logger: logger
+        )
     }
 
     /// Searches Apple Music and returns the raw response bytes plus the best-matching song (if any).
-    private func searchAppleMusic(artist: String, title: String, logger: Logger) async throws -> (data: Data, song: Song?) {
+    private func searchAppleMusic(
+        artist: String,
+        title: String,
+        logger: Logger
+    ) async throws -> (data: Data, song: Song?) {
         let searchFields = AppleMusicSearchType.items(searchTypes: [.songs])
         // Strip trailing parentheses (remix/edit annotations) from the title for the search term
         // only — the stored/displayed title keeps them. See searchTitle(_:).

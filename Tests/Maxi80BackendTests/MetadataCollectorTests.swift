@@ -39,7 +39,13 @@ struct MetadataCollectorTests {
     }
 
     static func metadataJSON(rawMetadata: String, artist: String, title: String, color: String?) -> Data {
-        let m = CollectedMetadata(rawMetadata: rawMetadata, artist: artist, title: title, collectedAt: "t", color: color)
+        let m = CollectedMetadata(
+            rawMetadata: rawMetadata,
+            artist: artist,
+            title: title,
+            collectedAt: "t",
+            color: color
+        )
         return try! JSONEncoder().encode(m)
     }
 
@@ -55,7 +61,12 @@ struct MetadataCollectorTests {
         // Existing objects live under the STRIPPED title (as the old parser stored them).
         await s3.setObject(
             key: "\(Self.prefix)/\(artist)/\(stripped)/metadata.json",
-            data: Self.metadataJSON(rawMetadata: "\(artist) - \(full)", artist: artist, title: stripped, color: "#0D0F11")
+            data: Self.metadataJSON(
+                rawMetadata: "\(artist) - \(full)",
+                artist: artist,
+                title: stripped,
+                color: "#0D0F11"
+            )
         )
         await s3.setObject(key: "\(Self.prefix)/\(artist)/\(stripped)/artwork.jpg", data: Data("img".utf8))
         await s3.setObject(key: "\(Self.prefix)/\(artist)/\(stripped)/search.json", data: Data("{}".utf8))
@@ -65,9 +76,21 @@ struct MetadataCollectorTests {
 
         // Copied every file from stripped → full.
         let copies = await s3.getCopyRecords()
-        #expect(copies.contains { $0.fromKey.hasSuffix("/\(stripped)/artwork.jpg") && $0.toKey.hasSuffix("/\(full)/artwork.jpg") })
-        #expect(copies.contains { $0.fromKey.hasSuffix("/\(stripped)/metadata.json") && $0.toKey.hasSuffix("/\(full)/metadata.json") })
-        #expect(copies.contains { $0.fromKey.hasSuffix("/\(stripped)/search.json") && $0.toKey.hasSuffix("/\(full)/search.json") })
+        #expect(
+            copies.contains {
+                $0.fromKey.hasSuffix("/\(stripped)/artwork.jpg") && $0.toKey.hasSuffix("/\(full)/artwork.jpg")
+            }
+        )
+        #expect(
+            copies.contains {
+                $0.fromKey.hasSuffix("/\(stripped)/metadata.json") && $0.toKey.hasSuffix("/\(full)/metadata.json")
+            }
+        )
+        #expect(
+            copies.contains {
+                $0.fromKey.hasSuffix("/\(stripped)/search.json") && $0.toKey.hasSuffix("/\(full)/search.json")
+            }
+        )
 
         // Rewrote metadata.json under the full title, carrying the color and preserving rawMetadata.
         let puts = await s3.getPutRecords()

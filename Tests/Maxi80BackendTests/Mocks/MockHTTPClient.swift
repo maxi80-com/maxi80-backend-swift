@@ -4,25 +4,25 @@ import Maxi80Backend
 import NIOHTTP1
 
 /// Mock HTTP client for testing
-public actor MockHTTPClient: HTTPClientProtocol {
+actor MockHTTPClient: HTTPClientProtocol {
 
-    public struct CallRecord: Sendable {
-        public let url: URL
-        public let method: NIOHTTP1.HTTPMethod
-        public let body: Data?
-        public let headers: [String: String]
-        public let timeout: Int64
+    struct CallRecord: Sendable {
+        let url: URL
+        let method: NIOHTTP1.HTTPMethod
+        let body: Data?
+        let headers: [String: String]
+        let timeout: Int64
     }
 
     private var callRecords: [CallRecord] = []
     private var responseData: [Data] = []
     private var responseStatuses: [HTTPResponseStatus] = []
-    private var errors: [Error] = []
+    private var errors: [any Error] = []
     private var currentIndex = 0
 
-    public init() {}
+    init() {}
 
-    public func apiCall(
+    func apiCall(
         url: URL,
         method: NIOHTTP1.HTTPMethod = .GET,
         body: Data? = nil,
@@ -62,20 +62,20 @@ public actor MockHTTPClient: HTTPClientProtocol {
 
     // MARK: - Test helpers
 
-    public func setResponse(data: Data, status: HTTPResponseStatus = .ok) {
+    func setResponse(data: Data, status: HTTPResponseStatus = .ok) {
         responseData.append(data)
         responseStatuses.append(status)
     }
 
-    public func setError(_ error: Error) {
+    func setError(_ error: any Error) {
         errors.append(error)
     }
 
-    public func getCallRecords() -> [CallRecord] {
+    func getCallRecords() -> [CallRecord] {
         callRecords
     }
 
-    public func reset() {
+    func reset() {
         callRecords.removeAll()
         responseData.removeAll()
         responseStatuses.removeAll()

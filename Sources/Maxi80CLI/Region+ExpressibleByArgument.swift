@@ -1,5 +1,5 @@
-import ArgumentParser
-import Maxi80Backend
+public import ArgumentParser
+public import Maxi80Backend
 
 extension Region: ExpressibleByArgument {
     public init?(argument: String) {

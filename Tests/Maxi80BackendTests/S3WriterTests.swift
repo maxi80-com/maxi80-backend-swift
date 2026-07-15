@@ -1,3 +1,4 @@
+import Logging
 import Testing
 
 @testable import IcecastMetadataCollector
@@ -8,8 +9,6 @@ import FoundationEssentials
 #else
 import Foundation
 #endif
-
-import Logging
 
 @Suite("S3Writer Tests")
 struct S3WriterTests {
@@ -37,12 +36,29 @@ struct S3WriterTests {
 
     // Feature: icecast-metadata-collector, Property 6: S3 key construction
     /// **Validates: Requirements 6.2, 6.3, 6.4**
-    @Test("Property 6: S3 key construction pattern",
-          arguments: generateS3KeyTestCases(count: 100))
+    @Test(
+        "Property 6: S3 key construction pattern",
+        arguments: generateS3KeyTestCases(count: 100)
+    )
     func s3KeyConstructionPattern(testCase: S3KeyTestCase) {
-        let metadataKey = buildS3Key(prefix: testCase.prefix, artist: testCase.artist, title: testCase.title, file: "metadata.json")
-        let searchKey = buildS3Key(prefix: testCase.prefix, artist: testCase.artist, title: testCase.title, file: "search.json")
-        let artworkKey = buildS3Key(prefix: testCase.prefix, artist: testCase.artist, title: testCase.title, file: "artwork.jpg")
+        let metadataKey = buildS3Key(
+            prefix: testCase.prefix,
+            artist: testCase.artist,
+            title: testCase.title,
+            file: "metadata.json"
+        )
+        let searchKey = buildS3Key(
+            prefix: testCase.prefix,
+            artist: testCase.artist,
+            title: testCase.title,
+            file: "search.json"
+        )
+        let artworkKey = buildS3Key(
+            prefix: testCase.prefix,
+            artist: testCase.artist,
+            title: testCase.title,
+            file: "artwork.jpg"
+        )
 
         #expect(metadataKey == "\(testCase.prefix)/\(testCase.artist)/\(testCase.title)/metadata.json")
         #expect(searchKey == "\(testCase.prefix)/\(testCase.artist)/\(testCase.title)/search.json")
@@ -95,8 +111,10 @@ extension S3WriterTests {
 
     // Feature: icecast-metadata-collector, Property 7: S3 cache hit skips processing
     /// **Validates: Requirements 6.1**
-    @Test("Property 7: S3 cache hit skips processing",
-          arguments: generateCacheHitTestCases(count: 100))
+    @Test(
+        "Property 7: S3 cache hit skips processing",
+        arguments: generateCacheHitTestCases(count: 100)
+    )
     func s3CacheHitSkipsProcessing(testCase: CacheHitTestCase) {
         var pipeline = MockCollectorPipeline(cacheHit: true)
         pipeline.run()
@@ -115,7 +133,13 @@ extension S3WriterTests {
 
     @Test("CollectedMetadata with a color round-trips and encodes the hex")
     func collectedMetadata_withColor_roundTrips() throws {
-        let metadata = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t", color: "#3D2A1C")
+        let metadata = CollectedMetadata(
+            rawMetadata: "A - B",
+            artist: "A",
+            title: "B",
+            collectedAt: "t",
+            color: "#3D2A1C"
+        )
 
         let data = try JSONEncoder().encode(metadata)
         let json = try #require(String(data: data, encoding: .utf8))
@@ -155,7 +179,13 @@ extension S3WriterTests {
         let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
         let writer = S3Writer(config: config)
 
-        let metadata = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t", color: "#112233")
+        let metadata = CollectedMetadata(
+            rawMetadata: "A - B",
+            artist: "A",
+            title: "B",
+            collectedAt: "t",
+            color: "#112233"
+        )
         try await writer.writeMetadata(metadata, artist: "A", title: "B", logger: Self.testLogger)
 
         let puts = await mockS3.getPutRecords()
@@ -167,7 +197,13 @@ extension S3WriterTests {
     @Test("readMetadata returns the cached color without any Apple Music call")
     func readMetadata_returnsCachedColor() async throws {
         let mockS3 = MockS3Client()
-        let cached = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t", color: "#AABBCC")
+        let cached = CollectedMetadata(
+            rawMetadata: "A - B",
+            artist: "A",
+            title: "B",
+            collectedAt: "t",
+            color: "#AABBCC"
+        )
         await mockS3.setGetObjectResult(try JSONEncoder().encode(cached))
 
         let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
@@ -201,8 +237,11 @@ extension S3WriterTests {
         let writer = S3Writer(config: config)
 
         try await writer.copyFile(
-            "artwork.jpg", artist: "Michael Jackson",
-            fromTitle: "PYT", toTitle: "PYT (Pretty Young Thing)", logger: Self.testLogger
+            "artwork.jpg",
+            artist: "Michael Jackson",
+            fromTitle: "PYT",
+            toTitle: "PYT (Pretty Young Thing)",
+            logger: Self.testLogger
         )
 
         let copies = await mockS3.getCopyRecords()
@@ -219,7 +258,10 @@ extension S3WriterTests {
         let writer = S3Writer(config: config)
 
         try await writer.deleteFile(
-            "metadata.json", artist: "Michael Jackson", title: "PYT", logger: Self.testLogger
+            "metadata.json",
+            artist: "Michael Jackson",
+            title: "PYT",
+            logger: Self.testLogger
         )
 
         let deletes = await mockS3.getDeleteRecords()

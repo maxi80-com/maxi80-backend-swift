@@ -3,10 +3,29 @@
 
 import PackageDescription
 
+let defaultSwiftSettings: [SwiftSetting] =
+    [
+        .treatAllWarnings(as: .error),
+        .enableExperimentalFeature("AvailabilityMacro=LambdaSwift 2.0:macOS 15.0"),
+
+        // https://docs.swift.org/compiler/documentation/diagnostics/nonisolated-nonsending-by-default/
+        .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+
+        // https://github.com/apple/swift-evolution/blob/main/proposals/0335-existential-any.md
+        // Require `any` for existential types
+        .enableUpcomingFeature("ExistentialAny"),
+
+        // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0444-member-import-visibility.md
+        .enableUpcomingFeature("MemberImportVisibility"),
+
+        // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0409-access-level-on-imports.md
+        .enableUpcomingFeature("InternalImportsByDefault"),
+    ]
+
 let package = Package(
     name: "maxi-80-backend-swift",
     platforms: [
-        .macOS(.v26),
+        .macOS(.v26)
     ],
     products: [
         .executable(name: "Maxi80Lambda", targets: ["Maxi80Lambda"]),
@@ -18,7 +37,7 @@ let package = Package(
         .executable(name: "IcecastMetadataCollector", targets: ["IcecastMetadataCollector"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/awslabs/swift-aws-lambda-runtime", from: "2.10.0"),
+        .package(url: "https://github.com/awslabs/swift-aws-lambda-runtime", from: "3.0.0-rc1"),
         .package(url: "https://github.com/awslabs/swift-aws-lambda-events.git", from: "1.5.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.5.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.13.0"),
@@ -39,7 +58,8 @@ let package = Package(
                 ),
                 .product(name: "AWSS3", package: "aws-sdk-swift"),
                 .target(name: "Maxi80Backend"),
-            ]
+            ],
+            swiftSettings: defaultSwiftSettings
         ),
         .target(
             name: "Maxi80Backend",
@@ -53,22 +73,26 @@ let package = Package(
                 .product(name: "JWTKit", package: "jwt-kit"),
                 .product(name: "AWSSSM", package: "aws-sdk-swift"),
                 .product(name: "AWSS3", package: "aws-sdk-swift"),
-            ]
+            ],
+            swiftSettings: defaultSwiftSettings
         ),
         .executableTarget(
             name: "Maxi80CLI",
             dependencies: [
                 "Maxi80Backend",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]
+            ],
+            swiftSettings: defaultSwiftSettings
         ),
         .executableTarget(
             name: "ParseMetadata",
-            dependencies: ["Maxi80Backend"]
+            dependencies: ["Maxi80Backend"],
+            swiftSettings: defaultSwiftSettings
         ),
         .executableTarget(
             name: "CollectAppleMusic",
-            dependencies: ["Maxi80Backend"]
+            dependencies: ["Maxi80Backend"],
+            swiftSettings: defaultSwiftSettings
         ),
         .executableTarget(
             name: "IcecastMetadataCollector",
@@ -83,7 +107,8 @@ let package = Package(
                 ),
                 .product(name: "AWSS3", package: "aws-sdk-swift"),
                 .target(name: "Maxi80Backend"),
-            ]
+            ],
+            swiftSettings: defaultSwiftSettings
         ),
         .executableTarget(
             name: "AuthorizerLambda",
@@ -96,7 +121,8 @@ let package = Package(
                     condition: .when(platforms: [.linux, .macOS])
                 ),
                 .target(name: "Maxi80Backend"),
-            ]
+            ],
+            swiftSettings: defaultSwiftSettings
         ),
         .testTarget(
             name: "Maxi80BackendTests",
@@ -110,7 +136,8 @@ let package = Package(
                     package: "swift-log",
                     condition: .when(platforms: [.linux, .macOS])
                 ),
-            ]
+            ],
+            swiftSettings: defaultSwiftSettings
         ),
     ]
 )

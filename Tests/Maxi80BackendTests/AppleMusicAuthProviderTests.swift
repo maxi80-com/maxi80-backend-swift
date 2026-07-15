@@ -22,8 +22,10 @@ struct AppleMusicAuthProviderTests {
 
     // Feature: icecast-metadata-collector, Property 8: Token cache reuse
     /// **Validates: Requirements 3.3**
-    @Test("Property 8: Token cache reuse",
-          arguments: generateTokenReuseTestCases(count: 100))
+    @Test(
+        "Property 8: Token cache reuse",
+        arguments: generateTokenReuseTestCases(count: 100)
+    )
     func tokenCacheReuse(testCase: TokenReuseTestCase) async throws {
         let mockFactory = MockJWTTokenFactory()
 
@@ -50,7 +52,10 @@ struct AppleMusicAuthProviderTests {
         // Verify: generateJWTString should have been called exactly once
         let calls = await mockFactory.getCallRecords()
         let generateCalls = calls.filter { $0.action == .generateJWTString }
-        #expect(generateCalls.count == 1, "generateJWTString should be called exactly once, was called \(generateCalls.count) times")
+        #expect(
+            generateCalls.count == 1,
+            "generateJWTString should be called exactly once, was called \(generateCalls.count) times"
+        )
 
         // Verify: the returned header should contain the cached token
         #expect(lastHeader?["Authorization"] == "Bearer cached-token-\(testCase.callCount)")

@@ -1,6 +1,6 @@
 import AWSSDKIdentity
 import AWSSSM
-import Logging
+public import Logging
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -79,7 +79,8 @@ public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
 
         // Decode JSON data
         guard let value = response.parameter?.value,
-              let data = value.data(using: .utf8) else {
+            let data = value.data(using: .utf8)
+        else {
             throw ParameterStoreError.decodingFailed(reason: "Failed to decode parameter value")
         }
 
@@ -122,5 +123,5 @@ enum ParameterStoreError: Error {
     case decodingFailed(reason: String)
     case cannotCreateClient(reason: String)
     case invalidResponse(reason: String)
-    case backendError(rootcause: Error)
+    case backendError(rootcause: any Error)
 }

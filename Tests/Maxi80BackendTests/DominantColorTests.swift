@@ -26,8 +26,10 @@ struct DominantColorTests {
         #expect(result.wholeMatch(of: /#[0-9A-F]{6}/) != nil)
     }
 
-    @Test("normalizedHex returns nil for malformed input",
-          arguments: ["", "12345", "1234567", "gggggg", "  ", "#12345", "12 34 56"])
+    @Test(
+        "normalizedHex returns nil for malformed input",
+        arguments: ["", "12345", "1234567", "gggggg", "  ", "#12345", "12 34 56"]
+    )
     func normalizedHex_withMalformedInput_returnsNil(raw: String) {
         #expect(DominantColor().normalizedHex(fromAppleBgColor: raw) == nil)
     }

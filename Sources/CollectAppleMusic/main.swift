@@ -84,7 +84,10 @@ for (index, line) in lines.enumerated() {
     let offset = 0
     print("[\(index + 1 + offset)/\(lines.count)] Searching: \(searchQuery)")
 
-    let result = runCommand(arguments: ["run", "Maxi80CLI", "--profile", "maxi80", "--region", "eu-central-1", "search", "--types", "songs", searchQuery])
+    let result = runCommand(arguments: [
+        "run", "Maxi80CLI", "--profile", "maxi80", "--region", "eu-central-1", "search", "--types", "songs",
+        searchQuery,
+    ])
 
     let outputFile =
         "\(outputDir)/\(String(format: "%03d", index + 1 + offset))_\(searchQuery.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")).json"

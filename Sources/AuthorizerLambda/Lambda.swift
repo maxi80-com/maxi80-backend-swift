@@ -17,14 +17,16 @@ struct AuthorizerLambda: LambdaHandler {
     private let expectedAPIKey: String
 
     init() async throws {
-        let logger = Logger(label: "AuthorizerLambda")
-        let parameterName = Lambda.env("API_KEY_PARAMETER") ?? "/maxi80/api-key"
-        let region = Lambda.env("AWS_REGION").flatMap { Region(awsRegionName: $0) } ?? .eucentral1
+        self.expectedAPIKey = try await withLogger(Logger(label: "AuthorizerLambda")) { logger in 
+            let parameterName = Lambda.env("API_KEY_PARAMETER") ?? "/maxi80/api-key"
+            let region = Lambda.env("AWS_REGION").flatMap { Region(awsRegionName: $0) } ?? .eucentral1
 
-        let parameterStore = try ParameterStoreManager<String>(region: region, logger: logger)
-        self.expectedAPIKey = try await parameterStore.getSecret(parameterName: parameterName)
+            let parameterStore = try ParameterStoreManager<String>(region: region, logger: logger)
+            let secret  = try await parameterStore.getSecret(parameterName: parameterName)
 
-        logger.info("Authorizer initialized")
+            logger.info("Authorizer initialized")
+            return secret
+        }
     }
 
     func handle(
@@ -40,7 +42,8 @@ struct AuthorizerLambda: LambdaHandler {
         let isAuthorized: Bool
         if let authHeader, !expectedAPIKey.isEmpty {
             // Support both "Bearer <key>" and raw key formats
-            let key = authHeader.hasPrefix("Bearer ")
+            let key =
+                authHeader.hasPrefix("Bearer ")
                 ? String(authHeader.dropFirst(7))
                 : authHeader
             isAuthorized = key == expectedAPIKey

@@ -142,11 +142,13 @@ struct ArtworkActionPropertyTests {
         let iterations = 100
         for _ in 0..<iterations {
             let mockS3 = MockS3Client()
-            await mockS3.setError(NSError(
-                domain: "S3Error",
-                code: Int.random(in: 1...999),
-                userInfo: [NSLocalizedDescriptionKey: randomNonEmptyString()]
-            ))
+            await mockS3.setError(
+                NSError(
+                    domain: "S3Error",
+                    code: Int.random(in: 1...999),
+                    userInfo: [NSLocalizedDescriptionKey: randomNonEmptyString()]
+                )
+            )
 
             let action = makeArtworkAction(s3Client: mockS3)
             let event = try makeEvent(artist: randomNonEmptyString(), title: randomNonEmptyString())

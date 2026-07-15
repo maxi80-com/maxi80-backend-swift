@@ -13,7 +13,7 @@ func buildS3Key(prefix: String, artist: String, title: String, file: String) -> 
 }
 
 struct S3Config {
-    let s3Client: S3ManagerProtocol
+    let s3Client: any S3ManagerProtocol
     let bucket: String
     let keyPrefix: String
 }
@@ -44,7 +44,13 @@ struct S3Writer {
         } catch {
             throw CollectorError.s3WriteFailed(file: "metadata.json", reason: error.localizedDescription)
         }
-        try await putObject(data: data, key: key, contentType: "application/json", file: "metadata.json", logger: logger)
+        try await putObject(
+            data: data,
+            key: key,
+            contentType: "application/json",
+            file: "metadata.json",
+            logger: logger
+        )
     }
 
     func writeSearchResults(_ data: Data, artist: String, title: String, logger: Logger) async throws {

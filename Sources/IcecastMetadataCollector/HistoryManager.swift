@@ -10,9 +10,9 @@ import Foundation
 struct HistoryEntry: Codable, Sendable, Equatable {
     let artist: String
     let title: String
-    let artwork: String    // Full S3 key, e.g. "collected/ArtistName/SongTitle/artwork.jpg"
+    let artwork: String  // Full S3 key, e.g. "collected/ArtistName/SongTitle/artwork.jpg"
     let timestamp: String  // ISO 8601 UTC, e.g. "2025-01-15T14:30:00Z"
-    let color: String?     // Dominant artwork color as "#RRGGBB" uppercase, or nil (omitted from JSON)
+    let color: String?  // Dominant artwork color as "#RRGGBB" uppercase, or nil (omitted from JSON)
 
     init(artist: String, title: String, artwork: String, timestamp: String, color: String? = nil) {
         self.artist = artist
@@ -24,7 +24,7 @@ struct HistoryEntry: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey { case artist, title, artwork, timestamp, color }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         artist = try container.decode(String.self, forKey: .artist)
         title = try container.decode(String.self, forKey: .title)
@@ -33,7 +33,7 @@ struct HistoryEntry: Codable, Sendable, Equatable {
         color = try container.decodeIfPresent(String.self, forKey: .color)
     }
 
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(artist, forKey: .artist)
         try container.encode(title, forKey: .title)
@@ -77,12 +77,24 @@ struct HistoryManager {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let data = try encoder.encode(history)
-        try await config.s3Client.putObject(data: data, bucket: config.bucket, key: key, contentType: "application/json")
+        try await config.s3Client.putObject(
+            data: data,
+            bucket: config.bucket,
+            key: key,
+            contentType: "application/json"
+        )
     }
 
     /// Records a new history entry. Non-throwing — errors are logged internally.
     /// Skips writing if the most recent entry (by timestamp) already matches on artist, title, and artwork.
-    func recordEntry(artist: String, title: String, artworkKey: String, timestamp: String, color: String? = nil, logger: Logger) async {
+    func recordEntry(
+        artist: String,
+        title: String,
+        artworkKey: String,
+        timestamp: String,
+        color: String? = nil,
+        logger: Logger
+    ) async {
         var history: HistoryFile
         do {
             history = try await readHistory()
@@ -93,7 +105,8 @@ struct HistoryManager {
 
         // Deduplicate: if the latest entry matches, skip
         if let latest = history.entries.max(by: { $0.timestamp < $1.timestamp }),
-           latest.artist == artist, latest.title == title, latest.artwork == artworkKey {
+            latest.artist == artist, latest.title == title, latest.artwork == artworkKey
+        {
             logger.info("Duplicate of latest history entry, skipping")
             return
         }

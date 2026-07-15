@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Logging
 import NIOCore
+import NIOHTTP1
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -35,8 +36,8 @@ struct IcecastReader: IcecastReading {
         }
 
         guard let metaIntString = response.headers.first(name: "icy-metaint"),
-              let metaInt = Int(metaIntString),
-              metaInt > 0
+            let metaInt = Int(metaIntString),
+            metaInt > 0
         else {
             throw IcecastError.missingMetaInt
         }
@@ -52,7 +53,8 @@ struct IcecastReader: IcecastReading {
 
             // Try to parse metadata from what we have so far
             if let title = parseMetadataFromStream(
-                buffer: allBytes, metaInt: metaInt
+                buffer: allBytes,
+                metaInt: metaInt
             ) {
                 logger.debug("Extracted StreamTitle: \(title)")
                 return title

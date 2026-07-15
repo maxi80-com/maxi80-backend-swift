@@ -1,10 +1,11 @@
-import AWSS3
+public import AWSS3
 import Logging
+import Smithy
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 // MARK: - S3 Client Protocol
@@ -64,19 +65,22 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
     }
 
     public func putObject(data: Data, bucket: String, key: String, contentType: String) async throws {
-        _ = try await s3Client.putObject(input: PutObjectInput(
-            body: .data(data),
-            bucket: bucket,
-            contentType: contentType,
-            key: key
-        ))
+        _ = try await s3Client.putObject(
+            input: PutObjectInput(
+                body: .data(data),
+                bucket: bucket,
+                contentType: contentType,
+                key: key
+            )
+        )
     }
 
     public func getObject(bucket: String, key: String) async throws -> Data? {
         do {
             let output = try await s3Client.getObject(input: GetObjectInput(bucket: bucket, key: key))
             guard let body = output.body,
-                  let data = try await body.readData() else {
+                let data = try await body.readData()
+            else {
                 return nil
             }
             return data
@@ -87,13 +91,16 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
 
     public func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
         // CopySource must be URL-encoded and include the bucket: "bucket/key".
-        let source = "\(bucket)/\(fromKey)"
+        let source =
+            "\(bucket)/\(fromKey)"
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "\(bucket)/\(fromKey)"
-        _ = try await s3Client.copyObject(input: CopyObjectInput(
-            bucket: bucket,
-            copySource: source,
-            key: toKey
-        ))
+        _ = try await s3Client.copyObject(
+            input: CopyObjectInput(
+                bucket: bucket,
+                copySource: source,
+                key: toKey
+            )
+        )
     }
 
     public func deleteObject(bucket: String, key: String) async throws {
@@ -132,7 +139,8 @@ public func resolveBucketRegion(
             input: GetBucketLocationInput(bucket: bucket)
         )
         if let locationConstraint = locationOutput.locationConstraint?.rawValue,
-           !locationConstraint.isEmpty {
+            !locationConstraint.isEmpty
+        {
             return Region(rawValue: locationConstraint)
         } else {
             // Buckets in us-east-1 return nil/empty LocationConstraint

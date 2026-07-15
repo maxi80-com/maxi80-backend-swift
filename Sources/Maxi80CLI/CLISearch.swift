@@ -1,6 +1,6 @@
-import ArgumentParser
+public import ArgumentParser
 import Logging
-import Maxi80Backend
+public import Maxi80Backend
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials

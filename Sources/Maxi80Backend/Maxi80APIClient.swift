@@ -1,11 +1,11 @@
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+public import FoundationNetworking
 #endif
 
 public protocol URLSessionProtocol {
@@ -47,9 +47,9 @@ extension URLSession: URLSessionProtocol {}
 public class Maxi80APIClient {
     private let baseURL: URL
     private let apiKey: String
-    private let session: URLSessionProtocol
+    private let session: any URLSessionProtocol
 
-    public init(baseURL: URL, apiKey: String, session: URLSessionProtocol = URLSession.shared) {
+    public init(baseURL: URL, apiKey: String, session: any URLSessionProtocol = URLSession.shared) {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.session = session

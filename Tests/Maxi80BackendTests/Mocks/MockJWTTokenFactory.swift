@@ -2,27 +2,27 @@ import Foundation
 import Maxi80Backend
 
 /// Mock JWT token factory for testing, using actor isolation for thread safety.
-public actor MockJWTTokenFactory: JWTTokenFactoryProtocol {
+actor MockJWTTokenFactory: JWTTokenFactoryProtocol {
 
-    public struct CallRecord: Sendable {
-        public let action: Action
-        public let token: String?
+    struct CallRecord: Sendable {
+        let action: Action
+        let token: String?
 
-        public enum Action: Equatable, Sendable {
+        enum Action: Equatable, Sendable {
             case generateJWTString
             case validateJWTString(String?)
         }
     }
 
     private var callRecords: [CallRecord] = []
-    private var generateTokenResponses: [Result<String, Error>] = []
+    private var generateTokenResponses: [Result<String, any Error>] = []
     private var validateTokenResponses: [Bool] = []
     private var generateIndex = 0
     private var validateIndex = 0
 
-    public init() {}
+    init() {}
 
-    public func generateJWTString() async throws -> String {
+    func generateJWTString() async throws -> String {
         let record = CallRecord(action: .generateJWTString, token: nil)
         callRecords.append(record)
 
@@ -41,7 +41,7 @@ public actor MockJWTTokenFactory: JWTTokenFactoryProtocol {
         }
     }
 
-    public func validateJWTString(token: String?) async -> Bool {
+    func validateJWTString(token: String?) async -> Bool {
         let record = CallRecord(action: .validateJWTString(token), token: token)
         callRecords.append(record)
 
@@ -55,23 +55,23 @@ public actor MockJWTTokenFactory: JWTTokenFactoryProtocol {
     }
 
     // Test helper methods
-    public func setGenerateTokenResponse(_ token: String) {
+    func setGenerateTokenResponse(_ token: String) {
         generateTokenResponses.append(.success(token))
     }
 
-    public func setGenerateTokenError(_ error: Error) {
+    func setGenerateTokenError(_ error: any Error) {
         generateTokenResponses.append(.failure(error))
     }
 
-    public func setValidateTokenResponse(_ isValid: Bool) {
+    func setValidateTokenResponse(_ isValid: Bool) {
         validateTokenResponses.append(isValid)
     }
 
-    public func getCallRecords() -> [CallRecord] {
+    func getCallRecords() -> [CallRecord] {
         callRecords
     }
 
-    public func reset() {
+    func reset() {
         callRecords.removeAll()
         generateTokenResponses.removeAll()
         validateTokenResponses.removeAll()
@@ -80,7 +80,7 @@ public actor MockJWTTokenFactory: JWTTokenFactoryProtocol {
     }
 }
 
-public enum MockError: Error {
+enum MockError: Error {
     case noResponseConfigured
     case invalidToken
 }

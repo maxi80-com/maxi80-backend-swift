@@ -6,7 +6,7 @@ import Testing
 class MockURLSession: URLSessionProtocol {
     var mockData: Data?
     var mockResponse: URLResponse?
-    var mockError: Error?
+    var mockError: (any Error)?
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         if let error = mockError {

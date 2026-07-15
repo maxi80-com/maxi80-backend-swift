@@ -5,11 +5,11 @@ import Foundation
 #endif
 
 struct CollectedMetadata: Codable, Sendable {
-    let rawMetadata: String      // Original Icecast StreamTitle value
-    let artist: String           // Parsed artist name
-    let title: String            // Parsed title
-    let collectedAt: String      // ISO 8601 timestamp
-    let color: String?           // Dominant artwork color "#RRGGBB", or nil (omitted from JSON)
+    let rawMetadata: String  // Original Icecast StreamTitle value
+    let artist: String  // Parsed artist name
+    let title: String  // Parsed title
+    let collectedAt: String  // ISO 8601 timestamp
+    let color: String?  // Dominant artwork color "#RRGGBB", or nil (omitted from JSON)
 
     init(rawMetadata: String, artist: String, title: String, collectedAt: String, color: String? = nil) {
         self.rawMetadata = rawMetadata
@@ -21,7 +21,7 @@ struct CollectedMetadata: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey { case rawMetadata, artist, title, collectedAt, color }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         rawMetadata = try container.decode(String.self, forKey: .rawMetadata)
         artist = try container.decode(String.self, forKey: .artist)
@@ -30,7 +30,7 @@ struct CollectedMetadata: Codable, Sendable {
         color = try container.decodeIfPresent(String.self, forKey: .color)
     }
 
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(rawMetadata, forKey: .rawMetadata)
         try container.encode(artist, forKey: .artist)

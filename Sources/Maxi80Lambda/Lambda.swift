@@ -17,53 +17,54 @@ struct Maxi80Lambda: LambdaHandler {
     private let router: Router
 
     init(
-        s3Client: S3ManagerProtocol? = nil,
+        s3Client: (any S3ManagerProtocol)? = nil,
         logger: Logger? = nil
     ) async throws {
 
-        let logger = logger ?? LoggingConfiguration(logger: Logger(label: "Maxi80Lambda")).makeRuntimeLogger()
-        logger.trace("Maxi80Lambda init started")
+        self.router = try await withLogger(logger ?? LoggingConfiguration().makeRuntimeLogger()) { logger in
+            logger.info("Initializing Maxi80Lambda...")
 
-        // read the region from the environment variable
-        let region = Lambda.env("AWS_REGION").flatMap { Region(awsRegionName: $0) } ?? .eucentral1
-        logger.trace("Region: \(region)")
+            // read the region from the environment variable
+            let region = Lambda.env("AWS_REGION").flatMap { Region(awsRegionName: $0) } ?? .eucentral1
+            logger.trace("Region: \(region)")
 
-        // S3 configuration
-        let bucket = Lambda.env("S3_BUCKET") ?? "artwork.maxi80.com"
-        let keyPrefix = Lambda.env("KEY_PREFIX") ?? "v2"
-        let urlExpiration = TimeInterval(Lambda.env("URL_EXPIRATION").flatMap { Int($0) } ?? 3600)
+            // S3 configuration
+            let bucket = Lambda.env("S3_BUCKET") ?? "artwork.maxi80.com"
+            let keyPrefix = Lambda.env("KEY_PREFIX") ?? "v2"
+            let urlExpiration = TimeInterval(Lambda.env("URL_EXPIRATION").flatMap { Int($0) } ?? 3600)
 
-        let resolvedS3Client: S3ManagerProtocol
-        if let provided = s3Client {
-            resolvedS3Client = provided
-        } else {
-            // Resolve actual bucket region (may differ from Lambda's region)
-            let bucketRegion = await resolveBucketRegion(bucket: bucket, configuredRegion: region)
-            logger.debug("Bucket \(bucket) resolved to region: \(bucketRegion)")
+            let resolvedS3Client: any S3ManagerProtocol
+            if let provided = s3Client {
+                resolvedS3Client = provided
+            } else {
+                // Resolve actual bucket region (may differ from Lambda's region)
+                let bucketRegion = await resolveBucketRegion(bucket: bucket, configuredRegion: region)
+                logger.debug("Bucket \(bucket) resolved to region: \(bucketRegion)")
 
-            let s3Config = try await S3Client.S3ClientConfig(region: bucketRegion.rawValue)
-            let s3 = S3Client(config: s3Config)
-            resolvedS3Client = S3Manager(s3Client: s3, region: bucketRegion)
+                let s3Config = try await S3Client.S3ClientConfig(region: bucketRegion.rawValue)
+                let s3 = S3Client(config: s3Config)
+                resolvedS3Client = S3Manager(s3Client: s3, region: bucketRegion)
+            }
+
+            // Initialize actions array
+            let actions: [any Action] = [
+                StationAction(),
+                ArtworkAction(
+                    s3Client: resolvedS3Client,
+                    bucket: bucket,
+                    keyPrefix: keyPrefix,
+                    urlExpiration: urlExpiration
+                ),
+                HistoryAction(
+                    s3Client: resolvedS3Client,
+                    bucket: bucket,
+                    keyPrefix: keyPrefix
+                ),
+            ]
+
+            // Initialize router with actions
+            return Router(actions: actions)
         }
-
-        // Initialize actions array
-        let actions: [any Action] = [
-            StationAction(),
-            ArtworkAction(
-                s3Client: resolvedS3Client,
-                bucket: bucket,
-                keyPrefix: keyPrefix,
-                urlExpiration: urlExpiration
-            ),
-            HistoryAction(
-                s3Client: resolvedS3Client,
-                bucket: bucket,
-                keyPrefix: keyPrefix
-            ),
-        ]
-
-        // Initialize router with actions
-        self.router = Router(actions: actions)
     }
 
     // the return value must be either APIGatewayV2Response or any Encodable struct

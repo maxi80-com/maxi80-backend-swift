@@ -1,6 +1,6 @@
-import AWSLambdaEvents
-import HTTPTypes
-import Logging
+public import AWSLambdaEvents
+public import HTTPTypes
+public import Logging
 import Maxi80Backend
 
 #if canImport(FoundationEssentials)

@@ -1,3 +1,5 @@
+import AsyncHTTPClient
+import NIOHTTP1
 import Testing
 
 @testable import IcecastMetadataCollector
@@ -24,9 +26,11 @@ struct IcecastReaderTests {
         }
 
         func randomPathSegment() -> String {
-            String((0..<Int.random(in: 1...12, using: &rng)).map { _ in
-                pathSegmentChars[Int.random(in: 0..<pathSegmentChars.count, using: &rng)]
-            })
+            String(
+                (0..<Int.random(in: 1...12, using: &rng)).map { _ in
+                    pathSegmentChars[Int.random(in: 0..<pathSegmentChars.count, using: &rng)]
+                }
+            )
         }
 
         for _ in 0..<count {
@@ -76,9 +80,11 @@ struct IcecastReaderTests {
         var strings: [String] = []
         for _ in 0..<count {
             let length = Int.random(in: 1...200, using: &rng)
-            let value = String((0..<length).map { _ in
-                chars[Int.random(in: 0..<chars.count, using: &rng)]
-            })
+            let value = String(
+                (0..<length).map { _ in
+                    chars[Int.random(in: 0..<chars.count, using: &rng)]
+                }
+            )
             strings.append(value)
         }
         return strings
@@ -101,9 +107,11 @@ struct IcecastReaderTests {
         for _ in 0..<count {
             let metaInt = Int.random(in: 1...16384, using: &rng)
             let length = Int.random(in: 1...200, using: &rng)
-            let metadata = String((0..<length).map { _ in
-                alphanumeric[Int.random(in: 0..<alphanumeric.count, using: &rng)]
-            })
+            let metadata = String(
+                (0..<length).map { _ in
+                    alphanumeric[Int.random(in: 0..<alphanumeric.count, using: &rng)]
+                }
+            )
             cases.append(IcecastStreamTestCase(metaInt: metaInt, metadataString: metadata))
         }
         return cases
@@ -113,8 +121,10 @@ struct IcecastReaderTests {
 
     // Feature: icecast-metadata-collector, Property 1: Icy-MetaData request header
     /// **Validates: Requirements 1.1**
-    @Test("Property 1: Icy-MetaData request header is always present",
-          arguments: generateRandomURLs(count: 100))
+    @Test(
+        "Property 1: Icy-MetaData request header is always present",
+        arguments: generateRandomURLs(count: 100)
+    )
     func icyMetaDataHeaderAlwaysPresent(url: String) {
         let request = reader.buildRequest(for: url)
         let headerValue = request.headers.first(name: "Icy-MetaData")
@@ -123,8 +133,10 @@ struct IcecastReaderTests {
 
     // Feature: icecast-metadata-collector, Property 2: Icecast protocol byte stream parsing (round trip)
     /// **Validates: Requirements 1.2, 1.3**
-    @Test("Property 2: Icecast byte stream round trip",
-          arguments: generateStreamTestCases(count: 100))
+    @Test(
+        "Property 2: Icecast byte stream round trip",
+        arguments: generateStreamTestCases(count: 100)
+    )
     func icecastByteStreamRoundTrip(testCase: IcecastStreamTestCase) {
         // Build the StreamTitle metadata payload
         let streamTitle = "StreamTitle='\(testCase.metadataString)';"
@@ -145,15 +157,16 @@ struct IcecastReaderTests {
 
     // Feature: icecast-metadata-collector, Property 3: StreamTitle extraction
     /// **Validates: Requirements 1.4**
-    @Test("Property 3: StreamTitle extraction",
-          arguments: generateRandomMetadataStrings(count: 100))
+    @Test(
+        "Property 3: StreamTitle extraction",
+        arguments: generateRandomMetadataStrings(count: 100)
+    )
     func streamTitleExtraction(value: String) {
         let wrapped = "StreamTitle='\(value)';"
         let result = reader.extractStreamTitle(wrapped)
         #expect(result == value)
     }
 }
-
 
 // MARK: - Unit Tests
 
@@ -193,11 +206,11 @@ extension IcecastReaderTests {
         let metaInt = 8
 
         // --- First metadata block: empty (length byte = 0) ---
-        var buffer = [UInt8](repeating: 0xAA, count: metaInt) // 8 audio bytes
-        buffer.append(0) // length byte = 0 → empty metadata block
+        var buffer = [UInt8](repeating: 0xAA, count: metaInt)  // 8 audio bytes
+        buffer.append(0)  // length byte = 0 → empty metadata block
 
         // --- Second metadata block: valid StreamTitle ---
-        buffer.append(contentsOf: [UInt8](repeating: 0xBB, count: metaInt)) // 8 more audio bytes
+        buffer.append(contentsOf: [UInt8](repeating: 0xBB, count: metaInt))  // 8 more audio bytes
         let title = "StreamTitle='Hello World';"
         let titleBytes = Array(title.utf8)
         let lengthByte = UInt8((titleBytes.count + 15) / 16)
@@ -217,7 +230,7 @@ extension IcecastReaderTests {
         let metaInt = 4
 
         // --- First metadata block with a valid StreamTitle ---
-        var buffer = [UInt8](repeating: 0xAA, count: metaInt) // 4 audio bytes
+        var buffer = [UInt8](repeating: 0xAA, count: metaInt)  // 4 audio bytes
         let firstTitle = "StreamTitle='First Song';"
         let firstBytes = Array(firstTitle.utf8)
         let firstLengthByte = UInt8((firstBytes.count + 15) / 16)
@@ -227,7 +240,7 @@ extension IcecastReaderTests {
         buffer.append(contentsOf: [UInt8](repeating: 0, count: firstPadded - firstBytes.count))
 
         // --- Second metadata block with a different StreamTitle ---
-        buffer.append(contentsOf: [UInt8](repeating: 0xBB, count: metaInt)) // 4 audio bytes
+        buffer.append(contentsOf: [UInt8](repeating: 0xBB, count: metaInt))  // 4 audio bytes
         let secondTitle = "StreamTitle='Second Song';"
         let secondBytes = Array(secondTitle.utf8)
         let secondLengthByte = UInt8((secondBytes.count + 15) / 16)

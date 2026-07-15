@@ -1,12 +1,12 @@
-import AWSLambdaEvents
-import HTTPTypes
-import Logging
-import Maxi80Backend
+public import AWSLambdaEvents
+public import HTTPTypes
+public import Logging
+public import Maxi80Backend
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// Protocol for all action handlers
@@ -46,13 +46,13 @@ public struct ArtworkAction: Action {
     public let endpoint: Maxi80Endpoint = .artwork
     public let method: HTTPRequest.Method = .get
 
-    private let s3Client: S3ManagerProtocol
+    private let s3Client: any S3ManagerProtocol
     private let bucket: String
     private let keyPrefix: String
     private let urlExpiration: TimeInterval
 
     public init(
-        s3Client: S3ManagerProtocol,
+        s3Client: any S3ManagerProtocol,
         bucket: String,
         keyPrefix: String,
         urlExpiration: TimeInterval
@@ -112,8 +112,6 @@ public enum ActionError: Error, CustomStringConvertible {
     }
 }
 
-
-
 // MARK: - History Action
 
 /// Handles history requests by reading history.json from S3 and returning it directly.
@@ -121,12 +119,12 @@ public struct HistoryAction: Action {
     public let endpoint: Maxi80Endpoint = .history
     public let method: HTTPRequest.Method = .get
 
-    private let s3Client: S3ManagerProtocol
+    private let s3Client: any S3ManagerProtocol
     private let bucket: String
     private let keyPrefix: String
 
     public init(
-        s3Client: S3ManagerProtocol,
+        s3Client: any S3ManagerProtocol,
         bucket: String,
         keyPrefix: String
     ) {

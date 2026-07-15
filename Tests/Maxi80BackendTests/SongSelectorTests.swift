@@ -1,5 +1,5 @@
-import Testing
 import Foundation
+import Testing
 
 @testable import IcecastMetadataCollector
 @testable import Maxi80Backend
@@ -59,26 +59,26 @@ struct SongSelectorTests {
             songsSection = ""
         } else {
             songsSection = """
-            "songs": {
-                "data": [\(songsJSON)],
-                "href": "/v1/catalog/fr/search?types=songs",
-                "next": null
-            }
-            """
+                "songs": {
+                    "data": [\(songsJSON)],
+                    "href": "/v1/catalog/fr/search?types=songs",
+                    "next": null
+                }
+                """
         }
         return """
-        {
-            "meta": {
+            {
+                "meta": {
+                    "results": {
+                        "order": ["songs"],
+                        "rawOrder": ["songs"]
+                    }
+                },
                 "results": {
-                    "order": ["songs"],
-                    "rawOrder": ["songs"]
+                    \(songsSection)
                 }
-            },
-            "results": {
-                \(songsSection)
             }
-        }
-        """
+            """
     }
 
     /// Decodes an AppleMusicSearchResponse from a list of song IDs.
@@ -98,8 +98,10 @@ struct SongSelectorTests {
 
     // Feature: icecast-metadata-collector, Property 4: Song selector returns first element
     /// **Validates: Requirements 4.1**
-    @Test("Property 4: Song selector returns first element",
-          arguments: generateSongCountTestCases())
+    @Test(
+        "Property 4: Song selector returns first element",
+        arguments: generateSongCountTestCases()
+    )
     func songSelectorReturnsFirst(songCount: Int) throws {
         let ids = (0..<songCount).map { "song-\($0)-\(Int.random(in: 1000...9999))" }
         let response = try SongSelectorTests.decodeResponse(songIDs: ids)

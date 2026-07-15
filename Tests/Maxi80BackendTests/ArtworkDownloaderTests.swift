@@ -20,7 +20,9 @@ struct ArtworkDownloaderTests {
 
         return (0..<count).map { _ in
             let pathLength = Int.random(in: 5...30, using: &rng)
-            let path = String((0..<pathLength).map { _ in alphanumeric[Int.random(in: 0..<alphanumeric.count, using: &rng)] })
+            let path = String(
+                (0..<pathLength).map { _ in alphanumeric[Int.random(in: 0..<alphanumeric.count, using: &rng)] }
+            )
             let template = "https://example.com/\(path)/{w}x{h}bb.jpg"
             let width = Int.random(in: 1...10000, using: &rng)
             let height = Int.random(in: 1...10000, using: &rng)
@@ -30,8 +32,10 @@ struct ArtworkDownloaderTests {
 
     // Feature: icecast-metadata-collector, Property 5: Artwork URL template substitution
     /// **Validates: Requirements 5.1**
-    @Test("Property 5: Artwork URL template substitution",
-          arguments: generateArtworkURLTestCases(count: 100))
+    @Test(
+        "Property 5: Artwork URL template substitution",
+        arguments: generateArtworkURLTestCases(count: 100)
+    )
     func artworkURLTemplateSubstitution(testCase: ArtworkURLTestCase) {
         let result = downloader.buildArtworkURL(
             template: testCase.template,
