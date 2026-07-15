@@ -63,7 +63,9 @@ struct MetadataCollector {
 
         // Step 2b: Check if this is the same track as the latest history entry — skip everything if so
         do {
+            logger.debug("DIAG: before readHistory (first S3 call of this invocation)")
             let history = try await historyManager.readHistory()
+            logger.debug("DIAG: after readHistory — \(history.entries.count) entries")
             if let latest = history.entries.max(by: { $0.timestamp < $1.timestamp }),
                 latest.artist == artist, latest.title == title
             {
@@ -84,6 +86,7 @@ struct MetadataCollector {
 
         // Step 3: Check S3 cache — if already collected, reuse the cached metadata (including
         // the dominant color) instead of calling Apple Music again.
+        logger.debug("DIAG: before readMetadata (S3 cache check)")
         if let cached = try await s3Writer.readMetadata(artist: artist, title: title) {
             logger.info("Cache hit for \(artist)/\(title), skipping collection")
 
@@ -178,6 +181,7 @@ struct MetadataCollector {
         }
 
         // Step 4: Search Apple Music
+        logger.debug("DIAG: cache miss, before Apple Music search (HTTP, not AWS SDK)")
         let (searchData, bestMatch) = try await searchAppleMusic(artist: artist, title: title, logger: logger)
 
         // Step 5: Select best match
@@ -243,6 +247,7 @@ struct MetadataCollector {
     {
         let artworkKey = buildS3Key(prefix: s3Writer.config.keyPrefix, artist: artist, title: title, file: file)
         let timestamp = Date.now.formatted(.iso8601)
+        logger.debug("DIAG: before recordEntry (S3 read+write history.json)")
         await historyManager.recordEntry(
             artist: artist,
             title: title,
