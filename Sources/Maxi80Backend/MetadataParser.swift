@@ -41,41 +41,22 @@ public func parseTrackMetadata(_ input: String) -> TrackMetadata {
         return TrackMetadata(artist: nil, title: nil)
     }
 
-    // Check for separators - prioritize " - " over "-"
-    let dashSeparators = [" - ", "-"]
-    var bestSeparator: String?
-    var lastSeparatorIndex: String.Index?
-
-    // Find the last occurrence of " - " first, then "-"
-    for separator in dashSeparators {
-        if let range = trimmed.ranges(of: separator).last {
-            // For single dash, make sure it's not part of a word (has spaces or is at boundaries)
-            if separator == "-" {
-                let beforeIndex = range.lowerBound
-                let afterIndex = range.upperBound
-                let hasSpaceBefore =
-                    beforeIndex == trimmed.startIndex || trimmed[trimmed.index(before: beforeIndex)] == " "
-                let hasSpaceAfter = afterIndex == trimmed.endIndex || trimmed[afterIndex] == " "
-
-                // Only treat as separator if it has space on at least one side or is at boundaries
-                if hasSpaceBefore || hasSpaceAfter {
-                    if lastSeparatorIndex == nil || range.lowerBound > lastSeparatorIndex! {
-                        lastSeparatorIndex = range.lowerBound
-                        bestSeparator = separator
-                    }
-                }
-            } else {
-                // " - " is always a valid separator
-                if lastSeparatorIndex == nil || range.lowerBound > lastSeparatorIndex! {
-                    lastSeparatorIndex = range.lowerBound
-                    bestSeparator = separator
-                }
-            }
-        }
-    }
-
-    // If no separator found, use "Maxi80" as artist and full text as title
-    guard let separatorIndex = lastSeparatorIndex, let separator = bestSeparator else {
+    // Choose the separator. Prefer the spaced " - ": it reliably marks the artist/title
+    // boundary and its LAST occurrence keeps multi-artist titles intact
+    // (e.g. "Michael Jackson - Diana Ross - Ease On Down The Road").
+    //
+    // When there is no spaced dash, fall back to a bare "-". Lazily-typed entries such as
+    // "modern talking-chery lady" put the artist before the FIRST bare dash, so split there.
+    let separator: String
+    let separatorIndex: String.Index
+    if let spacedRange = trimmed.ranges(of: " - ").last {
+        separator = " - "
+        separatorIndex = spacedRange.lowerBound
+    } else if let bareRange = trimmed.firstRange(of: "-") {
+        separator = "-"
+        separatorIndex = bareRange.lowerBound
+    } else {
+        // No separator found — use "Maxi80" as artist and full text as title.
         return TrackMetadata(artist: "Maxi80", title: trimmed)
     }
 

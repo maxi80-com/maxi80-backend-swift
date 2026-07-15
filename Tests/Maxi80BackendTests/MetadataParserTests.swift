@@ -27,6 +27,32 @@ struct MetadataParserTests {
         #expect(result.title == "Au bout de mes rêves (actu 1983)")
     }
 
+    @Test("Bare dash with no surrounding spaces splits into artist and title")
+    func testBareDashNoSpaces() {
+        // Regression: "modern talking-chery lady" was parsed as artist=Maxi80 with the whole
+        // string as title, because the bare "-" had no adjacent space. It must split.
+        let result = parseTrackMetadata("modern talking-chery lady")
+        #expect(result.artist == "modern talking")
+        #expect(result.title == "chery lady")
+    }
+
+    @Test("Spaced dash still takes priority over a bare dash")
+    func testSpacedDashPriorityOverBareDash() {
+        // "Jean-Jacques Goldman - Envole-moi": the bare dashes are inside artist/title,
+        // the real separator is " - ". Spaced-dash priority must win.
+        let result = parseTrackMetadata("Jean-Jacques Goldman - Envole-moi")
+        #expect(result.artist == "Jean-Jacques Goldman")
+        #expect(result.title == "Envole-moi")
+    }
+
+    @Test("Bare dash fallback splits at the first dash")
+    func testBareDashSplitsAtFirstDash() {
+        // With no spaced " - ", real lazy-typed entries put the artist before the first dash.
+        let result = parseTrackMetadata("muriel dacq-là ou ça")
+        #expect(result.artist == "muriel dacq")
+        #expect(result.title == "là ou ça")
+    }
+
     @Test("Maxi 80 artist normalization")
     func testMaxi80Normalization() {
         let result1 = parseTrackMetadata("Maxi 80 - Eighties Best Music")
@@ -128,7 +154,7 @@ struct MetadataParserTests {
                 "Michael Jackson - Diana Ross - Ease On Down The Road", "Michael Jackson - Diana Ross",
                 "Ease On Down The Road"
             ),
-            ("muriel dacq-là ou ça", "Maxi80", "muriel dacq-là ou ça"),
+            ("muriel dacq-là ou ça", "muriel dacq", "là ou ça"),
             (
                 "Jean-Jacques Goldman - Au bout de mes rêves (actu 1983)", "Jean-Jacques Goldman",
                 "Au bout de mes rêves (actu 1983)"
