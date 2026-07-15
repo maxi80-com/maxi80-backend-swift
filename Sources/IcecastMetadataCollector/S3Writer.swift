@@ -57,6 +57,23 @@ struct S3Writer {
         try await putObject(data: data, key: key, contentType: "image/jpeg", file: "artwork.jpg", logger: logger)
     }
 
+    /// Server-side copies one of the per-track files from a source title to a destination title
+    /// (same artist), used to migrate legacy stripped-title cache objects to the full-title key.
+    func copyFile(_ file: String, artist: String, fromTitle: String, toTitle: String, logger: Logger) async throws {
+        let fromKey = buildS3Key(prefix: config.keyPrefix, artist: artist, title: fromTitle, file: file)
+        let toKey = buildS3Key(prefix: config.keyPrefix, artist: artist, title: toTitle, file: file)
+        logger.debug("Copying \(file) s3://\(config.bucket)/\(fromKey) → \(toKey)")
+        try await config.s3Client.copyObject(bucket: config.bucket, fromKey: fromKey, toKey: toKey)
+    }
+
+    /// Deletes one of the per-track files for a given title, used to remove legacy stripped-title
+    /// cache objects after they've been copied to the full-title key.
+    func deleteFile(_ file: String, artist: String, title: String, logger: Logger) async throws {
+        let key = buildS3Key(prefix: config.keyPrefix, artist: artist, title: title, file: file)
+        logger.debug("Deleting s3://\(config.bucket)/\(key)")
+        try await config.s3Client.deleteObject(bucket: config.bucket, key: key)
+    }
+
     private func putObject(data: Data, key: String, contentType: String, file: String, logger: Logger) async throws {
         logger.debug("Writing \(file) to s3://\(config.bucket)/\(key)")
         do {

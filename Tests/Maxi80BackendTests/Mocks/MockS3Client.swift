@@ -16,6 +16,8 @@ public actor MockS3Client: S3ManagerProtocol {
     private var presignExpirations: [TimeInterval] = []
     private var putRecords: [(data: Data, bucket: String, key: String, contentType: String)] = []
     private var getObjectResults: [Data?] = []
+    private var copyRecords: [(bucket: String, fromKey: String, toKey: String)] = []
+    private var deleteRecords: [(bucket: String, key: String)] = []
     private var existsIndex = 0
     private var presignIndex = 0
     private var getObjectIndex = 0
@@ -65,7 +67,23 @@ public actor MockS3Client: S3ManagerProtocol {
         return result
     }
 
+    public func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
+        copyRecords.append((bucket: bucket, fromKey: fromKey, toKey: toKey))
+    }
+
+    public func deleteObject(bucket: String, key: String) async throws {
+        deleteRecords.append((bucket: bucket, key: key))
+    }
+
     // MARK: - Test helpers
+
+    public func getCopyRecords() -> [(bucket: String, fromKey: String, toKey: String)] {
+        copyRecords
+    }
+
+    public func getDeleteRecords() -> [(bucket: String, key: String)] {
+        deleteRecords
+    }
 
     public func setExists(_ exists: Bool) {
         existsResults.append(exists)
@@ -103,6 +121,8 @@ public actor MockS3Client: S3ManagerProtocol {
         presignExpirations.removeAll()
         putRecords.removeAll()
         getObjectResults.removeAll()
+        copyRecords.removeAll()
+        deleteRecords.removeAll()
         existsIndex = 0
         presignIndex = 0
         getObjectIndex = 0

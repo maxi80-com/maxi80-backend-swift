@@ -190,6 +190,45 @@ extension S3WriterTests {
     }
 }
 
+// MARK: - S3Writer legacy-title migration primitives
+
+extension S3WriterTests {
+
+    @Test("copyFile copies a per-track file from the stripped title to the full title")
+    func copyFile_copiesBetweenTitleKeys() async throws {
+        let mockS3 = MockS3Client()
+        let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
+        let writer = S3Writer(config: config)
+
+        try await writer.copyFile(
+            "artwork.jpg", artist: "Michael Jackson",
+            fromTitle: "PYT", toTitle: "PYT (Pretty Young Thing)", logger: Self.testLogger
+        )
+
+        let copies = await mockS3.getCopyRecords()
+        let copy = try #require(copies.first)
+        #expect(copy.bucket == "bucket")
+        #expect(copy.fromKey == "v2/Michael Jackson/PYT/artwork.jpg")
+        #expect(copy.toKey == "v2/Michael Jackson/PYT (Pretty Young Thing)/artwork.jpg")
+    }
+
+    @Test("deleteFile deletes the stripped-title object")
+    func deleteFile_deletesStrippedTitleKey() async throws {
+        let mockS3 = MockS3Client()
+        let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
+        let writer = S3Writer(config: config)
+
+        try await writer.deleteFile(
+            "metadata.json", artist: "Michael Jackson", title: "PYT", logger: Self.testLogger
+        )
+
+        let deletes = await mockS3.getDeleteRecords()
+        let delete = try #require(deletes.first)
+        #expect(delete.bucket == "bucket")
+        #expect(delete.key == "v2/Michael Jackson/PYT/metadata.json")
+    }
+}
+
 // MARK: - S3Writer Error Handling Unit Tests
 
 extension S3WriterTests {

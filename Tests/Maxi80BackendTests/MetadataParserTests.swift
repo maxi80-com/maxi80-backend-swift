@@ -23,7 +23,8 @@ struct MetadataParserTests {
     func testMultipleSeparators() {
         let result = parseTrackMetadata("Jean-Jacques Goldman - Au bout de mes rêves (actu 1983)")
         #expect(result.artist == "Jean-Jacques Goldman")
-        #expect(result.title == "Au bout de mes rêves")
+        // The full title is preserved; parentheses are stripped only for the search term.
+        #expect(result.title == "Au bout de mes rêves (actu 1983)")
     }
 
     @Test("Maxi 80 artist normalization")
@@ -85,29 +86,34 @@ struct MetadataParserTests {
         #expect(result3.title == "Ease On Down The Road")
     }
 
-    @Test("Parentheses removal from title")
-    func testParenthesesRemoval() {
+    @Test("Full title is preserved (parentheses NOT stripped by the parser)")
+    func testTitlePreservesParentheses() {
         let result1 = parseTrackMetadata("Jean-Jacques Goldman - Au bout de mes rêves (actu 1983)")
         #expect(result1.artist == "Jean-Jacques Goldman")
-        #expect(result1.title == "Au bout de mes rêves")
+        #expect(result1.title == "Au bout de mes rêves (actu 1983)")
 
-        let result2 = parseTrackMetadata("Ub40 - I got you babe (actu 1985)")
-        #expect(result2.artist == "Ub40")
-        #expect(result2.title == "I got you babe")
+        let result2 = parseTrackMetadata("Michael Jackson - PYT (Pretty Young Thing)")
+        #expect(result2.artist == "Michael Jackson")
+        #expect(result2.title == "PYT (Pretty Young Thing)")
 
-        let result3 = parseTrackMetadata("Rod Stewart - Passion (maxi 45 T)")
-        #expect(result3.artist == "Rod Stewart")
-        #expect(result3.title == "Passion")
+        // No parentheses — unchanged.
+        let result3 = parseTrackMetadata("Rita Mitsouko - Andy")
+        #expect(result3.artist == "Rita Mitsouko")
+        #expect(result3.title == "Andy")
+    }
 
-        // Test with no parentheses
-        let result4 = parseTrackMetadata("Rita Mitsouko - Andy")
-        #expect(result4.artist == "Rita Mitsouko")
-        #expect(result4.title == "Andy")
+    @Test("searchTitle strips only trailing parentheses for the Apple Music query")
+    func testSearchTitleStripping() {
+        // Trailing parentheses are dropped for the search term.
+        #expect(searchTitle("PYT (Pretty Young Thing)") == "PYT")
+        #expect(searchTitle("Au bout de mes rêves (actu 1983)") == "Au bout de mes rêves")
+        #expect(searchTitle("Passion (maxi 45 T)") == "Passion")
 
-        // Test with parentheses in middle (should not be removed)
-        let result5 = parseTrackMetadata("Artist - Title (middle) end")
-        #expect(result5.artist == "Artist")
-        #expect(result5.title == "Title (middle) end")
+        // No trailing parentheses — returned unchanged.
+        #expect(searchTitle("Andy") == "Andy")
+
+        // Parentheses in the middle are NOT stripped.
+        #expect(searchTitle("Title (middle) end") == "Title (middle) end")
     }
 
     @Test("Sample data validation")
@@ -123,8 +129,11 @@ struct MetadataParserTests {
                 "Ease On Down The Road"
             ),
             ("muriel dacq-là ou ça", "Maxi80", "muriel dacq-là ou ça"),
-            ("Jean-Jacques Goldman - Au bout de mes rêves (actu 1983)", "Jean-Jacques Goldman", "Au bout de mes rêves"),
-            ("Ub40 - I got you babe (actu 1985)", "Ub40", "I got you babe"),
+            (
+                "Jean-Jacques Goldman - Au bout de mes rêves (actu 1983)", "Jean-Jacques Goldman",
+                "Au bout de mes rêves (actu 1983)"
+            ),
+            ("Ub40 - I got you babe (actu 1985)", "Ub40", "I got you babe (actu 1985)"),
         ]
 
         for (input, expectedArtist, expectedTitle) in samples {

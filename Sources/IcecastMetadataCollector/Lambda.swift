@@ -171,6 +171,50 @@ struct IcecastMetadataCollector: LambdaHandler {
             return
         }
 
+        // Step 3b: Migrate legacy cache. Titles used to be stored with trailing parentheses
+        // stripped; they are now stored in full. If no full-title object exists but a stripped-title
+        // one does, copy its files to the full-title key, record history under the full title, and
+        // delete the stripped-title originals (avoids re-downloading artwork, a duplicate history
+        // entry, and paying for orphaned storage). A failed migration falls through to fresh
+        // collection below.
+        let stripped = searchTitle(title)
+        if stripped != title {
+            do {
+                if let legacy = try await s3Writer.readMetadata(artist: artist, title: stripped) {
+                    context.logger.info("Migrating stripped→full title cache: \(artist) - \(stripped) → \(title)")
+
+                    for file in ["artwork.jpg", "search.json", "metadata.json"] {
+                        do {
+                            try await s3Writer.copyFile(file, artist: artist, fromTitle: stripped, toTitle: title, logger: context.logger)
+                        } catch {
+                            // artwork.jpg may be absent (nocover tracks); other files should exist.
+                            context.logger.warning("Migration copy of \(file) failed for \(artist) - \(stripped): \(error)")
+                        }
+                    }
+
+                    // Rewrite the copied metadata.json so its title matches the full-title key.
+                    let migrated = CollectedMetadata(
+                        rawMetadata: legacy.rawMetadata, artist: legacy.artist, title: title,
+                        collectedAt: legacy.collectedAt, color: legacy.color
+                    )
+                    try await s3Writer.writeMetadata(migrated, artist: artist, title: title, logger: context.logger)
+
+                    await recordHistory(artist: artist, title: title, file: "artwork.jpg", color: legacy.color, logger: context.logger)
+
+                    for file in ["artwork.jpg", "search.json", "metadata.json"] {
+                        do {
+                            try await s3Writer.deleteFile(file, artist: artist, title: stripped, logger: context.logger)
+                        } catch {
+                            context.logger.warning("Migration delete of \(file) failed for \(artist) - \(stripped): \(error)")
+                        }
+                    }
+                    return
+                }
+            } catch {
+                context.logger.warning("Legacy-title migration failed for \(artist) - \(title), collecting fresh: \(error)")
+            }
+        }
+
         // Step 4: Search Apple Music
         let (searchData, bestMatch) = try await searchAppleMusic(artist: artist, title: title, logger: context.logger)
 
@@ -236,7 +280,9 @@ struct IcecastMetadataCollector: LambdaHandler {
     /// Searches Apple Music and returns the raw response bytes plus the best-matching song (if any).
     private func searchAppleMusic(artist: String, title: String, logger: Logger) async throws -> (data: Data, song: Song?) {
         let searchFields = AppleMusicSearchType.items(searchTypes: [.songs])
-        let searchTerms = AppleMusicSearchType.term(search: "\(artist) \(title)")
+        // Strip trailing parentheses (remix/edit annotations) from the title for the search term
+        // only — the stored/displayed title keeps them. See searchTitle(_:).
+        let searchTerms = AppleMusicSearchType.term(search: "\(artist) \(searchTitle(title))")
 
         let (searchData, _) = try await httpClient.apiCall(
             url: AppleMusicEndpoint.search.url(args: [searchFields, searchTerms]),

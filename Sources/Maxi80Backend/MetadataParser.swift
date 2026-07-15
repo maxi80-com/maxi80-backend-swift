@@ -30,8 +30,12 @@ public struct TrackMetadata: Sendable {
 /// The parser splits the input on dash separators (`" - "` or `"-"`) to
 /// extract the artist and title. When no separator is found, the entire
 /// input is used as the title with `"Maxi80"` as the default artist.
-/// Trailing parenthetical content (e.g. remix annotations) is stripped
-/// from the title.
+///
+/// The FULL title is preserved (including trailing parentheses such as
+/// `(Pretty Young Thing)`) so it is displayed and used as the artwork
+/// storage key consistently with the client. Trailing parenthetical
+/// content is stripped only when building the Apple Music search query —
+/// see ``searchTitle(_:)``.
 ///
 /// - Parameter input: The raw metadata string from the audio stream.
 /// - Returns: A ``TrackMetadata`` instance with the parsed artist and title.
@@ -92,12 +96,22 @@ public func parseTrackMetadata(_ input: String) -> TrackMetadata {
 
     // If artist is empty but title exists, use Maxi80 as artist
     let finalArtist = artistPart.isEmpty ? "Maxi80" : normalizeMaxi80Artist(artistPart)
-    let finalTitle = titlePart.isEmpty ? nil : removeTrailingParentheses(titlePart)
+    let finalTitle = titlePart.isEmpty ? nil : titlePart
 
     return TrackMetadata(
         artist: finalArtist,
         title: finalTitle
     )
+}
+
+/// Returns the title with trailing parenthetical content removed, for use as an Apple Music
+/// search term. Remix/edit annotations (e.g. `(Radio Edit)`, `(actu 1983)`) reduce match quality,
+/// so they are dropped from the query — but NOT from the stored/displayed title.
+///
+/// - Parameter title: The full track title.
+/// - Returns: The title without a trailing `(...)` group, or the original if there is none.
+public func searchTitle(_ title: String) -> String {
+    removeTrailingParentheses(title)
 }
 
 private func removeTrailingParentheses(_ title: String) -> String {

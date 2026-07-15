@@ -24,6 +24,12 @@ public protocol S3ManagerProtocol: Sendable {
 
     /// Download an object from S3. Returns nil if the key does not exist (NoSuchKey).
     func getObject(bucket: String, key: String) async throws -> Data?
+
+    /// Server-side copy an object within the same bucket from one key to another.
+    func copyObject(bucket: String, fromKey: String, toKey: String) async throws
+
+    /// Delete an object. Succeeds (no-op) if the key does not exist.
+    func deleteObject(bucket: String, key: String) async throws
 }
 
 // MARK: - AWS S3 Client Adapter
@@ -77,6 +83,21 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
         } catch is AWSS3.NoSuchKey {
             return nil
         }
+    }
+
+    public func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
+        // CopySource must be URL-encoded and include the bucket: "bucket/key".
+        let source = "\(bucket)/\(fromKey)"
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "\(bucket)/\(fromKey)"
+        _ = try await s3Client.copyObject(input: CopyObjectInput(
+            bucket: bucket,
+            copySource: source,
+            key: toKey
+        ))
+    }
+
+    public func deleteObject(bucket: String, key: String) async throws {
+        _ = try await s3Client.deleteObject(input: DeleteObjectInput(bucket: bucket, key: key))
     }
 }
 
