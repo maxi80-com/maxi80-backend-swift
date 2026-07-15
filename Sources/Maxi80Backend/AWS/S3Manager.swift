@@ -91,9 +91,7 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
 
     public func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
         // CopySource must be URL-encoded and include the bucket: "bucket/key".
-        let source =
-            "\(bucket)/\(fromKey)"
-            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "\(bucket)/\(fromKey)"
+        let source = "\(bucket)/\(fromKey)".addingPathPercentEncoding()
         _ = try await s3Client.copyObject(
             input: CopyObjectInput(
                 bucket: bucket,

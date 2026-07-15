@@ -88,7 +88,7 @@ struct Maxi80Lambda: LambdaHandler {
                 return APIGatewayV2Response(
                     statusCode: .ok,
                     headers: header,
-                    body: String(data: responseData, encoding: .utf8)
+                    body: String(decoding: responseData, as: UTF8.self)
                 )
             }
 
@@ -109,7 +109,7 @@ struct Maxi80Lambda: LambdaHandler {
             return APIGatewayV2Response(
                 statusCode: .internalServerError,
                 headers: header,
-                body: "\(error.localizedDescription)"
+                body: "\(error)"
             )
         }
     }

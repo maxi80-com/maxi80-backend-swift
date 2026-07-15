@@ -42,7 +42,7 @@ struct S3Writer {
         do {
             data = try JSONEncoder().encode(metadata)
         } catch {
-            throw CollectorError.s3WriteFailed(file: "metadata.json", reason: error.localizedDescription)
+            throw CollectorError.s3WriteFailed(file: "metadata.json", reason: "\(error)")
         }
         try await putObject(
             data: data,

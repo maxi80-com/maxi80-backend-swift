@@ -1,9 +1,3 @@
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
-import Foundation
-#endif
-
 /// A structure representing metadata for a radio track.
 ///
 /// `TrackMetadata` holds the artist name and title extracted
@@ -40,7 +34,7 @@ public struct TrackMetadata: Sendable {
 /// - Parameter input: The raw metadata string from the audio stream.
 /// - Returns: A ``TrackMetadata`` instance with the parsed artist and title.
 public func parseTrackMetadata(_ input: String) -> TrackMetadata {
-    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmed = input.trimmingWhitespace()
 
     // Handle empty input
     guard !trimmed.isEmpty else {
@@ -54,7 +48,7 @@ public func parseTrackMetadata(_ input: String) -> TrackMetadata {
 
     // Find the last occurrence of " - " first, then "-"
     for separator in dashSeparators {
-        if let range = trimmed.range(of: separator, options: .backwards) {
+        if let range = trimmed.ranges(of: separator).last {
             // For single dash, make sure it's not part of a word (has spaces or is at boundaries)
             if separator == "-" {
                 let beforeIndex = range.lowerBound
@@ -85,9 +79,9 @@ public func parseTrackMetadata(_ input: String) -> TrackMetadata {
         return TrackMetadata(artist: "Maxi80", title: trimmed)
     }
 
-    let artistPart = String(trimmed[..<separatorIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+    let artistPart = String(trimmed[..<separatorIndex]).trimmingWhitespace()
     let titleStartIndex = trimmed.index(separatorIndex, offsetBy: separator.count)
-    let titlePart = String(trimmed[titleStartIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    let titlePart = String(trimmed[titleStartIndex...]).trimmingWhitespace()
 
     // Handle edge case where separator results in empty parts
     if artistPart.isEmpty && titlePart.isEmpty {
@@ -115,12 +109,12 @@ public func searchTitle(_ title: String) -> String {
 }
 
 private func removeTrailingParentheses(_ title: String) -> String {
-    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmed = title.trimmingWhitespace()
 
     // Check if title ends with parentheses
     if trimmed.hasSuffix(")") {
         if let lastOpenParen = trimmed.lastIndex(of: "(") {
-            let beforeParen = String(trimmed[..<lastOpenParen]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let beforeParen = String(trimmed[..<lastOpenParen]).trimmingWhitespace()
             return beforeParen.isEmpty ? trimmed : beforeParen
         }
     }

@@ -78,13 +78,11 @@ public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
         logger.trace("Parameter retrieved")
 
         // Decode JSON data
-        guard let value = response.parameter?.value,
-            let data = value.data(using: .utf8)
-        else {
+        guard let value = response.parameter?.value else {
             throw ParameterStoreError.decodingFailed(reason: "Failed to decode parameter value")
         }
 
-        let decodedData = try decoder.decode(S.self, from: data)
+        let decodedData = try decoder.decode(S.self, from: Data(value.utf8))
 
         logger.trace("Parameter decoded")
         return decodedData
@@ -92,9 +90,7 @@ public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
 
     public func storeSecret(secret: S, parameterName: String) async throws -> Int {
         let data = try encoder.encode(secret)
-        guard let secretString = String(data: data, encoding: .utf8) else {
-            throw ParameterStoreError.decodingFailed(reason: "Failed to encode secret as UTF-8 string")
-        }
+        let secretString = String(decoding: data, as: UTF8.self)
 
         logger.trace("Storing parameter: \(parameterName)")
         let request = PutParameterInput(

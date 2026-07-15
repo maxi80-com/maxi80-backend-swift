@@ -75,7 +75,7 @@ struct MetadataCollector {
         }
 
         // Step 2c: If artist is "maxi80" or "maxi 80" (case-insensitive), skip Apple Music search
-        let normalizedArtist = artist.lowercased().trimmingCharacters(in: .whitespaces)
+        let normalizedArtist = artist.lowercased().trimmingWhitespace()
         if normalizedArtist == "maxi80" || normalizedArtist == "maxi 80" {
             logger.info("Artist is Maxi 80, skipping Apple Music search")
             await recordHistory(artist: artist, title: title, file: "nocover.jpg", logger: logger)

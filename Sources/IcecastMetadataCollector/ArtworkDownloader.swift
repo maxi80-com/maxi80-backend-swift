@@ -33,7 +33,7 @@ struct ArtworkDownloader: ArtworkDownloading {
         do {
             response = try await HTTPClient.shared.execute(request, timeout: .seconds(30))
         } catch {
-            throw CollectorError.artworkDownloadFailed(reason: error.localizedDescription)
+            throw CollectorError.artworkDownloadFailed(reason: "\(error)")
         }
 
         guard response.status == .ok else {
@@ -50,7 +50,7 @@ struct ArtworkDownloader: ArtworkDownloading {
     /// Builds the artwork download URL by replacing {w} and {h} placeholders.
     func buildArtworkURL(template: String, width: Int, height: Int) -> String {
         template
-            .replacingOccurrences(of: "{w}", with: "\(width)")
-            .replacingOccurrences(of: "{h}", with: "\(height)")
+            .replacing("{w}", with: "\(width)")
+            .replacing("{h}", with: "\(height)")
     }
 }

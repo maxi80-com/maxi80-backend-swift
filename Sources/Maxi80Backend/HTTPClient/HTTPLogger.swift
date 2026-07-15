@@ -48,10 +48,10 @@ extension Logger {
         }
 
         if let data {
-            output += "\n\(String(data: data, encoding: .utf8) ?? "")\n"
+            output += "\n\(String(decoding: data, as: UTF8.self))\n"
         }
-        if error != nil {
-            output += "\nError: \(error!.localizedDescription)\n"
+        if let error {
+            output += "\nError: \(error)\n"
         }
         self.trace("\(output)")
     }

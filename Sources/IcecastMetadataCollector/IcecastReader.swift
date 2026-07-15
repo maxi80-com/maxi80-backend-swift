@@ -26,7 +26,7 @@ struct IcecastReader: IcecastReading {
         do {
             response = try await HTTPClient.shared.execute(request, timeout: .seconds(30))
         } catch {
-            throw IcecastError.connectionFailed(reason: error.localizedDescription)
+            throw IcecastError.connectionFailed(reason: "\(error)")
         }
 
         guard response.status == .ok || response.status.code < 400 else {
@@ -76,11 +76,11 @@ struct IcecastReader: IcecastReading {
     /// Expected format: `StreamTitle='Some Title';`
     func extractStreamTitle(_ metadata: String) -> String? {
         let prefix = "StreamTitle='"
-        guard let prefixRange = metadata.range(of: prefix) else {
+        guard let prefixRange = metadata.firstRange(of: prefix) else {
             return nil
         }
         let afterPrefix = metadata[prefixRange.upperBound...]
-        guard let endQuote = afterPrefix.range(of: "';") else {
+        guard let endQuote = afterPrefix.firstRange(of: "';") else {
             return nil
         }
         let value = String(afterPrefix[..<endQuote.lowerBound])
