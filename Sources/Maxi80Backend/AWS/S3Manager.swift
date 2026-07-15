@@ -1,6 +1,6 @@
-public import AWSS3
+public import SotoCore
+import SotoS3
 import Logging
-import Smithy
 
 #if canImport(FoundationEssentials)
 public import FoundationEssentials
@@ -33,41 +33,54 @@ public protocol S3ManagerProtocol: Sendable {
     func deleteObject(bucket: String, key: String) async throws
 }
 
-// MARK: - AWS S3 Client Adapter
+// MARK: - Soto S3 Client Adapter
 
-/// Concrete implementation wrapping `AWSS3.S3Client`.
+/// Concrete implementation wrapping Soto's `S3` service.
 public struct S3Manager: S3ManagerProtocol, Sendable {
-    private let s3Client: S3Client
+    /// Maximum size (bytes) collected from a GetObject response body.
+    private static let maxObjectSize = 20 * 1024 * 1024
+
+    private let client: AWSClient
+    private let s3: S3
     private let region: Region
 
-    public init(s3Client: S3Client, region: Region) {
-        self.s3Client = s3Client
+    public init(client: AWSClient, region: Region) {
+        self.client = client
         self.region = region
+        self.s3 = S3(client: client, region: SotoCore.Region(rawValue: region.rawValue))
     }
 
     public func objectExists(bucket: String, key: String) async throws -> Bool {
         do {
-            _ = try await s3Client.headObject(input: HeadObjectInput(bucket: bucket, key: key))
+            _ = try await s3.headObject(bucket: bucket, key: key)
             return true
-        } catch is AWSS3.NotFound {
+        } catch let error as S3ErrorType where error == .notFound || error == .noSuchKey {
+            return false
+        } catch let error as AWSResponseError where error.context?.responseCode == .notFound {
+            // HeadObject returns a bodyless 404 that surfaces as an unmodeled response
+            // error rather than a typed S3ErrorType.
             return false
         }
         // Other errors propagate — caller logs the details
     }
 
     public func presignedGetURL(bucket: String, key: String, expiration: TimeInterval) async throws -> URL {
-        let input = GetObjectInput(bucket: bucket, key: key)
-        let config = try await S3Client.S3ClientConfig(region: region.rawValue)
-        guard let url = try await input.presignURL(config: config, expiration: expiration) else {
+        let encodedKey = key.addingPathPercentEncoding()
+        guard let url = URL(string: "https://\(bucket).s3.\(region.rawValue).amazonaws.com/\(encodedKey)") else {
             throw S3ManagerError.presignFailed(key: key)
         }
-        return url
+        return try await client.signURL(
+            url: url,
+            httpMethod: .GET,
+            expires: .seconds(Int64(expiration)),
+            serviceConfig: s3.config
+        )
     }
 
     public func putObject(data: Data, bucket: String, key: String, contentType: String) async throws {
-        _ = try await s3Client.putObject(
-            input: PutObjectInput(
-                body: .data(data),
+        _ = try await s3.putObject(
+            S3.PutObjectRequest(
+                body: .init(bytes: data),
                 bucket: bucket,
                 contentType: contentType,
                 key: key
@@ -77,14 +90,12 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
 
     public func getObject(bucket: String, key: String) async throws -> Data? {
         do {
-            let output = try await s3Client.getObject(input: GetObjectInput(bucket: bucket, key: key))
-            guard let body = output.body,
-                let data = try await body.readData()
-            else {
-                return nil
-            }
-            return data
-        } catch is AWSS3.NoSuchKey {
+            let output = try await s3.getObject(bucket: bucket, key: key)
+            let buffer = try await output.body.collect(upTo: Self.maxObjectSize)
+            return Data(buffer.readableBytesView)
+        } catch let error as S3ErrorType where error == .noSuchKey || error == .notFound {
+            return nil
+        } catch let error as AWSResponseError where error.context?.responseCode == .notFound {
             return nil
         }
     }
@@ -92,8 +103,8 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
     public func copyObject(bucket: String, fromKey: String, toKey: String) async throws {
         // CopySource must be URL-encoded and include the bucket: "bucket/key".
         let source = "\(bucket)/\(fromKey)".addingPathPercentEncoding()
-        _ = try await s3Client.copyObject(
-            input: CopyObjectInput(
+        _ = try await s3.copyObject(
+            S3.CopyObjectRequest(
                 bucket: bucket,
                 copySource: source,
                 key: toKey
@@ -102,7 +113,7 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
     }
 
     public func deleteObject(bucket: String, key: String) async throws {
-        _ = try await s3Client.deleteObject(input: DeleteObjectInput(bucket: bucket, key: key))
+        _ = try await s3.deleteObject(bucket: bucket, key: key)
     }
 }
 
@@ -121,21 +132,20 @@ public enum S3ManagerError: Error {
 ///
 /// - Parameters:
 ///   - bucket: The S3 bucket name.
+///   - client: The shared `AWSClient` used to issue the request.
 ///   - configuredRegion: The region to use as fallback if the lookup fails.
 ///   - fallback: The region to return if the lookup fails. Defaults to `configuredRegion`.
 /// - Returns: The resolved bucket region.
 public func resolveBucketRegion(
     bucket: String,
+    client: AWSClient,
     configuredRegion: Region,
     fallback: Region? = nil
 ) async -> Region {
     do {
         // GetBucketLocation must be called from us-east-1 to work for any bucket
-        let tempConfig = try S3Client.S3ClientConfig(region: "us-east-1")
-        let tempS3 = S3Client(config: tempConfig)
-        let locationOutput = try await tempS3.getBucketLocation(
-            input: GetBucketLocationInput(bucket: bucket)
-        )
+        let s3 = S3(client: client, region: .useast1)
+        let locationOutput = try await s3.getBucketLocation(bucket: bucket)
         if let locationConstraint = locationOutput.locationConstraint?.rawValue,
             !locationConstraint.isEmpty
         {

@@ -2,6 +2,7 @@ import AWSLambdaEvents
 import AWSLambdaRuntime
 import Logging
 import Maxi80Backend
+import SotoCore
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials

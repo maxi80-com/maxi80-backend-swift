@@ -1,6 +1,7 @@
 import ArgumentParser
 import Logging
 import Maxi80Backend
+import SotoCore
 import Synchronization
 
 // arguments that are global to all commands

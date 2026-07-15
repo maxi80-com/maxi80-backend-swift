@@ -1,8 +1,9 @@
 import AWSLambdaEvents
 import AWSLambdaRuntime
-import AWSS3
 import Logging
 import Maxi80Backend
+import class SotoCore.AWSClient
+import struct SotoCore.Region
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -36,11 +37,16 @@ struct IcecastMetadataCollector: LambdaHandler {
             let configuredRegion = Lambda.env("AWS_REGION").flatMap { Region(awsRegionName: $0) } ?? .eucentral1
             logger.trace("Configured region: \(configuredRegion)")
 
+            // One AWSClient (soto) shared by all AWS access in this Lambda, using the execution
+            // role. Reused across warm invocations; the process host tears it down on shutdown.
+            let awsClient = AWSClient()
+
             // Resolve bucket region and retrieve Apple Music secret in parallel.
             // These two async operations are independent — both only need env-derived values.
 
             async let resolvedBucketRegion: Region = resolveBucketRegion(
                 bucket: bucket,
+                client: awsClient,
                 configuredRegion: configuredRegion
             )
 
@@ -69,8 +75,7 @@ struct IcecastMetadataCollector: LambdaHandler {
             let httpClient = MusicAPIClient()
 
             // Initialize S3 client adapter (uses the resolved bucket region)
-            let s3ClientConfig = try await S3Client.S3ClientConfig(region: bucketRegion.rawValue)
-            let s3Client = S3Manager(s3Client: S3Client(config: s3ClientConfig), region: bucketRegion)
+            let s3Client = S3Manager(client: awsClient, region: bucketRegion)
             let s3Config = S3Config(s3Client: s3Client, bucket: bucket, keyPrefix: keyPrefix)
             let s3Writer = S3Writer(config: s3Config)
 

@@ -1,9 +1,10 @@
 import AWSLambdaEvents
 import AWSLambdaRuntime
-import AWSS3
 import HTTPTypes
 import Logging
 import Maxi80Backend
+import class SotoCore.AWSClient
+import struct SotoCore.Region
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -21,7 +22,7 @@ struct Maxi80Lambda: LambdaHandler {
         logger: Logger? = nil
     ) async throws {
 
-        self.router = try await withLogger(logger ?? LoggingConfiguration().makeRuntimeLogger()) { logger in
+        self.router = await withLogger(logger ?? LoggingConfiguration().makeRuntimeLogger()) { logger in
             logger.info("Initializing Maxi80Lambda...")
 
             // read the region from the environment variable
@@ -37,13 +38,14 @@ struct Maxi80Lambda: LambdaHandler {
             if let provided = s3Client {
                 resolvedS3Client = provided
             } else {
+                // One AWSClient (soto) using the Lambda execution role; reused across invocations.
+                let awsClient = AWSClient()
                 // Resolve actual bucket region (may differ from Lambda's region)
-                let bucketRegion = await resolveBucketRegion(bucket: bucket, configuredRegion: region)
+                let bucketRegion = await resolveBucketRegion(
+                    bucket: bucket, client: awsClient, configuredRegion: region
+                )
                 logger.debug("Bucket \(bucket) resolved to region: \(bucketRegion)")
-
-                let s3Config = try await S3Client.S3ClientConfig(region: bucketRegion.rawValue)
-                let s3 = S3Client(config: s3Config)
-                resolvedS3Client = S3Manager(s3Client: s3, region: bucketRegion)
+                resolvedS3Client = S3Manager(client: awsClient, region: bucketRegion)
             }
 
             // Initialize actions array

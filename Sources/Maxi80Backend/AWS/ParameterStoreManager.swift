@@ -1,5 +1,5 @@
-import AWSSDKIdentity
-import AWSSSM
+public import SotoCore
+import SotoSSM
 public import Logging
 
 #if canImport(FoundationEssentials)
@@ -25,7 +25,8 @@ public protocol ParameterStoreProtocol {
 
 public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
 
-    private let ssmClient: SSMClient
+    private let awsClient: AWSClient
+    private let ssm: SSM
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
     private let region: Region
@@ -38,40 +39,41 @@ public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
         logger[metadataKey: "Component"] = "ParameterStoreManager"
         self.logger = logger
 
-        // create an SSM configuration
         self.region = region
-        guard
-            var config = try? SSMClient.SSMClientConfig(
-                region: region.rawValue
-            )
-        else {
-            throw ParameterStoreError.cannotCreateClient(
-                reason: "Failed to create SSM configuration"
-            )
-        }
         logger.trace("Using region: \(region)")
 
+        // Build a soto AWSClient. This type owns the client because all callers
+        // construct it standalone (one-shot CLI invocations and Lambda inits).
+        // Those hosts are short-lived or reused across a warm Lambda process, so
+        // we deliberately do not shut the client down here — the CLI process exits
+        // and the Lambda process is reused, and adding an explicit shutdown would
+        // break reuse. If a long-lived caller ever adopts this type, switch to an
+        // injected AWSClient so the caller can manage its lifecycle.
         if let awsProfileName {
             logger.trace("Using credentials from AWS profile: \(awsProfileName)")
-            config.awsCredentialIdentityResolver = ProfileAWSCredentialIdentityResolver(
-                profileName: awsProfileName
+            self.awsClient = AWSClient(
+                credentialProvider: .configFile(profile: awsProfileName)
             )
+        } else {
+            // Default provider chain (e.g. the Lambda execution role).
+            self.awsClient = AWSClient()
         }
 
-        // Configure SSM client
-        self.ssmClient = SSMClient(config: config)
+        self.ssm = SSM(
+            client: self.awsClient,
+            region: SotoCore.Region(rawValue: region.rawValue)
+        )
     }
 
     public func getSecret(parameterName: String) async throws -> S {
 
-        // Create GetParameter request with decryption
-        let request = GetParameterInput(name: parameterName, withDecryption: true)
-
-        // Get the parameter value
+        // Get the parameter value (with decryption for SecureString parameters)
         logger.trace("Retrieving parameter: \(parameterName)")
-        let response: GetParameterOutput
+        let response: SSM.GetParameterResult
         do {
-            response = try await self.ssmClient.getParameter(input: request)
+            response = try await self.ssm.getParameter(
+                SSM.GetParameterRequest(name: parameterName, withDecryption: true)
+            )
         } catch {
             throw ParameterStoreError.backendError(rootcause: error)
         }
@@ -93,22 +95,23 @@ public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
         let secretString = String(decoding: data, as: UTF8.self)
 
         logger.trace("Storing parameter: \(parameterName)")
-        let request = PutParameterInput(
-            name: parameterName,
-            overwrite: true,
-            type: .secureString,
-            value: secretString
-        )
 
-        let response: PutParameterOutput
+        let response: SSM.PutParameterResult
         do {
-            response = try await self.ssmClient.putParameter(input: request)
+            response = try await self.ssm.putParameter(
+                SSM.PutParameterRequest(
+                    name: parameterName,
+                    overwrite: true,
+                    type: .secureString,
+                    value: secretString
+                )
+            )
         } catch {
             logger.error("Cannot store parameter")
             throw ParameterStoreError.backendError(rootcause: error)
         }
 
-        let version = Int(response.version)
+        let version = Int(response.version ?? 0)
         logger.trace("Parameter stored (version \(version))")
         return version
     }

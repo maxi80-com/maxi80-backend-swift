@@ -1,4 +1,5 @@
 import Foundation
+import SotoCore
 import Testing
 
 @testable import Maxi80Backend
@@ -33,10 +34,11 @@ struct RegionTests {
         #expect(numbersOnly == nil)
         #expect(upperCase == nil)
 
-        // Well-formed but unknown regions should now be accepted
+        // SotoCore's Region(awsRegionName:) validates against a known-region allowlist, so a
+        // well-formed but non-existent region is rejected (stricter than the old custom regex —
+        // this catches typos). All AWS regions the app actually uses are in the allowlist.
         let unknownRegion = Region(awsRegionName: "us-invalid-1")
-        #expect(unknownRegion != nil)
-        #expect(unknownRegion?.rawValue == "us-invalid-1")
+        #expect(unknownRegion == nil)
     }
 
     @Test("Region raw values")
