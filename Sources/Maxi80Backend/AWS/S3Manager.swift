@@ -65,8 +65,12 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
     }
 
     public func presignedGetURL(bucket: String, key: String, expiration: TimeInterval) async throws -> URL {
+        // Use PATH-style (bucket in the path, not the host). The bucket name "artwork.maxi80.com"
+        // contains dots, so virtual-hosted style (`<bucket>.s3.<region>.amazonaws.com`) yields a
+        // host the S3 wildcard cert `*.s3.<region>.amazonaws.com` can't match → the client's TLS
+        // trust evaluation fails (-9802). Path-style keeps the host at `s3.<region>.amazonaws.com`.
         let encodedKey = key.addingPathPercentEncoding()
-        guard let url = URL(string: "https://\(bucket).s3.\(region.rawValue).amazonaws.com/\(encodedKey)") else {
+        guard let url = URL(string: "https://s3.\(region.rawValue).amazonaws.com/\(bucket)/\(encodedKey)") else {
             throw S3ManagerError.presignFailed(key: key)
         }
         return try await client.signURL(
