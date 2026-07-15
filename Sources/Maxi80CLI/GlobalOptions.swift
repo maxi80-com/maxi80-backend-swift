@@ -30,4 +30,23 @@ struct GlobalOptions: ParsableArguments {
         }
         return logger
     }
+
+    /// Runs `body` with a soto `AWSClient` (honoring the optional `--profile`) and shuts the client
+    /// down afterward — including on error — so soto's debug-build deinit assertion never fires.
+    func withAWSClient<T>(_ body: (AWSClient) async throws -> T) async throws -> T {
+        let client: AWSClient =
+            if let profile {
+                AWSClient(credentialProvider: .configFile(profile: profile))
+            } else {
+                AWSClient()
+            }
+        do {
+            let result = try await body(client)
+            try await client.shutdown()
+            return result
+        } catch {
+            try? await client.shutdown()
+            throw error
+        }
+    }
 }

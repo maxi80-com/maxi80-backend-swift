@@ -25,7 +25,6 @@ public protocol ParameterStoreProtocol {
 
 public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
 
-    private let awsClient: AWSClient
     private let ssm: SSM
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -33,7 +32,11 @@ public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
 
     private let logger: Logger
 
-    public init(region: Region, awsProfileName: String? = nil, logger: Logger) throws {
+    /// - Parameter client: The soto `AWSClient` to use. The CALLER owns its lifecycle (creation
+    ///   and shutdown); this type never shuts it down. Injecting the client — rather than creating
+    ///   one internally — lets the caller manage graceful shutdown and avoids soto's debug-build
+    ///   `deinit` assertion that fires when an `AWSClient` is released without `syncShutdown()`.
+    public init(client: AWSClient, region: Region, logger: Logger) {
 
         var logger = logger
         logger[metadataKey: "Component"] = "ParameterStoreManager"
@@ -42,25 +45,8 @@ public struct ParameterStoreManager<S: Codable>: ParameterStoreProtocol {
         self.region = region
         logger.trace("Using region: \(region)")
 
-        // Build a soto AWSClient. This type owns the client because all callers
-        // construct it standalone (one-shot CLI invocations and Lambda inits).
-        // Those hosts are short-lived or reused across a warm Lambda process, so
-        // we deliberately do not shut the client down here — the CLI process exits
-        // and the Lambda process is reused, and adding an explicit shutdown would
-        // break reuse. If a long-lived caller ever adopts this type, switch to an
-        // injected AWSClient so the caller can manage its lifecycle.
-        if let awsProfileName {
-            logger.trace("Using credentials from AWS profile: \(awsProfileName)")
-            self.awsClient = AWSClient(
-                credentialProvider: .configFile(profile: awsProfileName)
-            )
-        } else {
-            // Default provider chain (e.g. the Lambda execution role).
-            self.awsClient = AWSClient()
-        }
-
         self.ssm = SSM(
-            client: self.awsClient,
+            client: client,
             region: SotoCore.Region(rawValue: region.rawValue)
         )
     }

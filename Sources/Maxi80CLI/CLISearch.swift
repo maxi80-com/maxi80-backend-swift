@@ -1,6 +1,7 @@
 public import ArgumentParser
 import Logging
 public import Maxi80Backend
+import SotoCore
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -29,13 +30,14 @@ struct Search: AsyncParsableCommand {
         let httpClient = MusicAPIClient()
 
         // Get Apple Music credentials from parameter store
-        let parameterStore = try ParameterStoreManager<AppleMusicSecret>(
-            region: globalOptions.region,
-            awsProfileName: globalOptions.profile,
-            logger: logger
-        )
-
-        let secret = try await parameterStore.getSecret(parameterName: Secret.name)
+        let secret = try await globalOptions.withAWSClient { awsClient in
+            let parameterStore = ParameterStoreManager<AppleMusicSecret>(
+                client: awsClient,
+                region: globalOptions.region,
+                logger: logger
+            )
+            return try await parameterStore.getSecret(parameterName: Secret.name)
+        }
         logger.trace("Got secret \(secret)")
 
         let tokenFactory = JWTTokenFactory(

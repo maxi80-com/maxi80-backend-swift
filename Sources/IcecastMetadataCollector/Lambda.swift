@@ -51,7 +51,8 @@ struct IcecastMetadataCollector: LambdaHandler {
             )
 
             async let resolvedTokenFactory: JWTTokenFactory = {
-                let parameterStore = try ParameterStoreManager<AppleMusicSecret>(
+                let parameterStore = ParameterStoreManager<AppleMusicSecret>(
+                    client: awsClient,
                     region: configuredRegion,
                     logger: logger
                 )

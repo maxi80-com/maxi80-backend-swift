@@ -22,8 +22,12 @@ struct AuthorizerLambda: LambdaHandler {
             let parameterName = Lambda.env("API_KEY_PARAMETER") ?? "/maxi80/api-key"
             let region = Lambda.env("AWS_REGION").flatMap { Region(awsRegionName: $0) } ?? .eucentral1
 
-            let parameterStore = try ParameterStoreManager<String>(region: region, logger: logger)
-            let secret  = try await parameterStore.getSecret(parameterName: parameterName)
+            // One soto AWSClient (execution role), reused across warm invocations.
+            let awsClient = AWSClient()
+            let parameterStore = ParameterStoreManager<String>(
+                client: awsClient, region: region, logger: logger
+            )
+            let secret = try await parameterStore.getSecret(parameterName: parameterName)
 
             logger.info("Authorizer initialized")
             return secret
