@@ -33,13 +33,21 @@ struct MetadataCollectorTests {
         )
     }
 
-    static func metadataJSON(rawMetadata: String, artist: String, title: String, color: String?) -> Data {
+    static let sampleColors = ArtworkColors(
+        bg: "#0D0F11",
+        text1: "#FFFFFF",
+        text2: "#CCCCCC",
+        text3: "#999999",
+        text4: "#666666"
+    )
+
+    static func metadataJSON(rawMetadata: String, artist: String, title: String, colors: ArtworkColors?) -> Data {
         let m = CollectedMetadata(
             rawMetadata: rawMetadata,
             artist: artist,
             title: title,
             collectedAt: "t",
-            color: color
+            colors: colors
         )
         return try! JSONEncoder().encode(m)
     }
@@ -60,7 +68,7 @@ struct MetadataCollectorTests {
                 rawMetadata: "\(artist) - \(full)",
                 artist: artist,
                 title: stripped,
-                color: "#0D0F11"
+                colors: Self.sampleColors
             )
         )
         await s3.setObject(key: "\(Self.prefix)/\(artist)/\(stripped)/artwork.jpg", data: Data("img".utf8))
@@ -92,7 +100,7 @@ struct MetadataCollectorTests {
         let metaPut = try #require(puts.first { $0.key == "\(Self.prefix)/\(artist)/\(full)/metadata.json" })
         let migrated = try JSONDecoder().decode(CollectedMetadata.self, from: metaPut.data)
         #expect(migrated.title == full)
-        #expect(migrated.color == "#0D0F11")
+        #expect(migrated.colors == Self.sampleColors)
 
         // Deleted the old stripped-title originals to avoid orphaned storage.
         let deletes = await s3.getDeleteRecords()
@@ -106,7 +114,7 @@ struct MetadataCollectorTests {
         let entry = try #require(history.entries.last)
         #expect(entry.title == full)
         #expect(entry.artwork == "\(Self.prefix)/\(artist)/\(full)/artwork.jpg")
-        #expect(entry.color == "#0D0F11")
+        #expect(entry.colors == Self.sampleColors)
     }
 
     @Test("Full-title cache hit does not trigger migration")
@@ -118,7 +126,12 @@ struct MetadataCollectorTests {
         // Object already exists under the FULL title.
         await s3.setObject(
             key: "\(Self.prefix)/\(artist)/\(full)/metadata.json",
-            data: Self.metadataJSON(rawMetadata: "\(artist) - \(full)", artist: artist, title: full, color: "#0D0F11")
+            data: Self.metadataJSON(
+                rawMetadata: "\(artist) - \(full)",
+                artist: artist,
+                title: full,
+                colors: Self.sampleColors
+            )
         )
 
         let collector = Self.makeCollector(rawMetadata: "\(artist) - \(full)", s3: s3)
@@ -222,5 +235,15 @@ struct MetadataCollectorTests {
         let entries = try await Self.lastWrittenHistoryEntries(s3)
         #expect(entries.count == 1)
         #expect(entries.last?.artwork.hasSuffix("/artwork.jpg") == true)
+        #expect(
+            entries.last?.colors
+                == ArtworkColors(
+                    bg: "#000000",
+                    text1: "#FFFFFF",
+                    text2: "#CCCCCC",
+                    text3: "#999999",
+                    text4: "#666666"
+                )
+        )
     }
 }
