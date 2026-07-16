@@ -52,36 +52,4 @@ struct CoreModelTests {
         #expect(defaultStation.websiteUrl == "https://maxi80.com")
         #expect(defaultStation.donationUrl == "https://www.maxi80.com/paypal.htm")
     }
-
-    @Test("Maxi80Endpoint from path")
-    func testMaxi80EndpointFromPath() {
-        // When
-        let stationEndpoint = Maxi80Endpoint.from(path: "/station")
-        let artworkEndpoint = Maxi80Endpoint.from(path: "/artwork")
-        let invalidEndpoint = Maxi80Endpoint.from(path: "/invalid")
-
-        // Then
-        #expect(stationEndpoint == .station)
-        #expect(artworkEndpoint == .artwork)
-        #expect(invalidEndpoint == nil)
-    }
-
-    @Test("Maxi80Endpoint raw values")
-    func testMaxi80EndpointRawValues() {
-        // Then
-        #expect(Maxi80Endpoint.station.rawValue == "/station")
-        #expect(Maxi80Endpoint.artwork.rawValue == "/artwork")
-    }
-
-    @Test("Maxi80Endpoint all cases")
-    func testMaxi80EndpointAllCases() {
-        // When
-        let allCases = Maxi80Endpoint.allCases
-
-        // Then
-        #expect(allCases.count == 3)
-        #expect(allCases.contains(.station))
-        #expect(allCases.contains(.artwork))
-        #expect(allCases.contains(.history))
-    }
 }

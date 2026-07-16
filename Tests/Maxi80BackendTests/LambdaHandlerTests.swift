@@ -1,7 +1,8 @@
 import AWSLambdaEvents
 import Foundation
 import HTTPTypes
-import NIOHTTP1
+import Logging
+import Routing
 import Testing
 
 @testable import Maxi80Backend
@@ -12,79 +13,53 @@ struct LambdaHandlerTests {
 
     @Test("Lambda initialization with mock S3 client succeeds")
     func testLambdaInitialization() async throws {
-        // Given
         let mockS3Client = MockS3Client()
-
-        // When
-        let lambda = try await Maxi80Lambda(
-            s3Client: mockS3Client
-        )
-
-        // Then - if we get here without throwing, initialization succeeded
+        let lambda = try await Maxi80Lambda(s3Client: mockS3Client)
         _ = lambda
     }
 
-    @Test("Station endpoint logic returns correct data")
-    func testStationLogic() async throws {
-        // Given
-        let mockS3Client = MockS3Client()
-
-        let lambda = try await Maxi80Lambda(
-            s3Client: mockS3Client
+    @Test("Station action returns the default station as JSON")
+    func testStationAction() async throws {
+        let response = try await StationAction().handle(
+            TestHelpers.createHTTPRequest(path: "/station"),
+            Logger(label: "test")
         )
 
-        _ = lambda
-
-        _ = try TestHelpers.createAPIGatewayRequest(path: "/station")
-
-        // When - Test the core logic by checking Station.default
-        let station = Station.default
-
-        // Then
+        #expect(response.statusCode == .ok)
+        let station = try JSONDecoder().decode(Station.self, from: TestHelpers.body(of: response))
         #expect(station.name == "Maxi 80")
         #expect(station.streamUrl == "https://audio1.maxi80.com")
     }
 
-    @Test("Artwork endpoint validation works correctly")
-    func testArtworkValidation() async throws {
-        // Given
-        let mockS3Client = MockS3Client()
+    @Test("History action returns empty entries when no history file exists")
+    func testHistoryActionEmpty() async throws {
+        let mockS3 = MockS3Client()
+        let action = HistoryAction(s3Client: mockS3, bucket: "test-bucket", keyPrefix: "v2")
 
-        _ = try await Maxi80Lambda(
-            s3Client: mockS3Client
+        let response = try await action.handle(
+            TestHelpers.createHTTPRequest(path: "/history"),
+            Logger(label: "test")
         )
 
-        // Test endpoint validation
-        let validEndpoint = Maxi80Endpoint.from(path: "/artwork")
-        #expect(validEndpoint == .artwork)
-
-        let invalidEndpoint = Maxi80Endpoint.from(path: "/invalid")
-        #expect(invalidEndpoint == nil)
-
-        // Test query parameter validation
-        let eventWithParams = try TestHelpers.createAPIGatewayRequest(
-            path: "/artwork",
-            queryStringParameters: ["artist": "Duran Duran", "title": "Rio"]
-        )
-        #expect(eventWithParams.queryStringParameters["artist"] == "Duran Duran")
-        #expect(eventWithParams.queryStringParameters["title"] == "Rio")
-
-        let eventWithoutParams = try TestHelpers.createAPIGatewayRequest(path: "/artwork")
-        #expect(eventWithoutParams.queryStringParameters["artist"] == nil)
+        #expect(response.statusCode == .ok)
+        let body = String(decoding: try TestHelpers.body(of: response), as: UTF8.self)
+        #expect(body == "{\"entries\":[]}")
     }
 
-    @Test("HTTP method validation works correctly")
-    func testHTTPMethodValidation() async throws {
-        // Test GET method
-        let getEvent = try TestHelpers.createAPIGatewayRequest(path: "/station", httpMethod: "GET")
-        #expect(getEvent.context.http.method == .get)
+    @Test("History action returns the stored history file verbatim")
+    func testHistoryActionReturnsStored() async throws {
+        let mockS3 = MockS3Client()
+        let stored = "{\"entries\":[{\"artist\":\"Duran Duran\",\"title\":\"Rio\"}]}"
+        await mockS3.setGetObjectResult(Data(stored.utf8))
+        let action = HistoryAction(s3Client: mockS3, bucket: "test-bucket", keyPrefix: "v2")
 
-        // Test POST method
-        let postEvent = try TestHelpers.createAPIGatewayRequest(path: "/station", httpMethod: "POST")
-        #expect(postEvent.context.http.method == .post)
+        let response = try await action.handle(
+            TestHelpers.createHTTPRequest(path: "/history"),
+            Logger(label: "test")
+        )
 
-        // Test other methods
-        let putEvent = try TestHelpers.createAPIGatewayRequest(path: "/station", httpMethod: "PUT")
-        #expect(putEvent.context.http.method == .put)
+        #expect(response.statusCode == .ok)
+        let body = String(decoding: try TestHelpers.body(of: response), as: UTF8.self)
+        #expect(body == stored)
     }
 }

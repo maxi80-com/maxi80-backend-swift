@@ -1,5 +1,5 @@
 {
-  "originHash" : "92092506906b548b13384b540c4e74107f587527327e2b618b01d8c6bd894ef9",
+  "originHash" : "1e9d0987ad027ad781adf5cc56496342736d2508985d0b50333a9ccb86c50721",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -26,6 +26,24 @@
       "state" : {
         "revision" : "7abc497b0f907191933c87166e9b6a41b9d028d6",
         "version" : "5.6.0"
+      }
+    },
+    {
+      "identity" : "lambda-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sebsto/lambda-kit.git",
+      "state" : {
+        "branch" : "support-runtime-3",
+        "revision" : "5b2b025635a872345e7711177fe5b56a5ce81fad"
+      }
+    },
+    {
+      "identity" : "routing-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vapor/routing-kit.git",
+      "state" : {
+        "revision" : "d5e881aa94853128d2651587f9e78c30631315b9",
+        "version" : "5.0.0-beta.2"
       }
     },
     {

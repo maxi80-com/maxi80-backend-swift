@@ -7,9 +7,3 @@ extension PathMatchable {
         allCases.first { $0.rawValue == path }
     }
 }
-
-public enum Maxi80Endpoint: String, CaseIterable, PathMatchable {
-    case station = "/station"
-    case artwork = "/artwork"
-    case history = "/history"
-}

@@ -51,6 +51,11 @@ let package = Package(
         .package(url: "https://github.com/soto-project/soto-core.git", from: "7.13.0"),
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.34.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.0"),
+        // Fork of SongShift/lambda-kit widening the swift-aws-lambda-runtime pin to 3.x
+        // (upstream pins 2.6.x, which conflicts with this project's 3.0.0-rc1). Only the
+        // Routing library is used; it does not depend on the runtime. Track upstream and
+        // switch back once it supports runtime 3.x. Package.resolved pins the commit.
+        .package(url: "https://github.com/sebsto/lambda-kit.git", branch: "support-runtime-3"),
     ],
     targets: [
         // Minimal, code-generated AWS service clients (soto-codegenerator), each depending only on
@@ -78,6 +83,7 @@ let package = Package(
                     package: "swift-log",
                     condition: .when(platforms: [.linux, .macOS])
                 ),
+                .product(name: "Routing", package: "lambda-kit"),
                 .target(name: "SotoS3"),
                 .target(name: "Maxi80Backend"),
             ],
@@ -152,6 +158,7 @@ let package = Package(
                 "Maxi80Backend",
                 "Maxi80Lambda",
                 "IcecastMetadataCollector",
+                .product(name: "Routing", package: "lambda-kit"),
                 .product(name: "SotoCore", package: "soto-core"),
                 .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
                 .product(

@@ -1,8 +1,8 @@
 import AWSLambdaEvents
 import AWSLambdaRuntime
-import HTTPTypes
 import Logging
 import Maxi80Backend
+import Routing
 import class SotoCore.AWSClient
 import struct SotoCore.Region
 
@@ -15,7 +15,7 @@ import Foundation
 @main
 struct Maxi80Lambda: LambdaHandler {
 
-    private let router: Router
+    private let router: Maxi80Router
 
     init(
         s3Client: (any S3ManagerProtocol)? = nil,
@@ -48,72 +48,32 @@ struct Maxi80Lambda: LambdaHandler {
                 resolvedS3Client = S3Manager(client: awsClient, region: bucketRegion)
             }
 
-            // Initialize actions array
-            let actions: [any Action] = [
-                StationAction(),
-                ArtworkAction(
-                    s3Client: resolvedS3Client,
-                    bucket: bucket,
-                    keyPrefix: keyPrefix,
-                    urlExpiration: urlExpiration
-                ),
-                HistoryAction(
-                    s3Client: resolvedS3Client,
-                    bucket: bucket,
-                    keyPrefix: keyPrefix
-                ),
-            ]
+            let station = StationAction()
+            let artwork = ArtworkAction(
+                s3Client: resolvedS3Client,
+                bucket: bucket,
+                keyPrefix: keyPrefix,
+                urlExpiration: urlExpiration
+            )
+            let history = HistoryAction(
+                s3Client: resolvedS3Client,
+                bucket: bucket,
+                keyPrefix: keyPrefix
+            )
 
-            // Initialize router with actions
-            return Router(actions: actions)
+            return Maxi80Router(station: station, artwork: artwork, history: history)
         }
     }
 
-    // the return value must be either APIGatewayV2Response or any Encodable struct
     func handle(_ event: APIGatewayV2Request, context: LambdaContext) async throws -> APIGatewayV2Response {
-        var header = HTTPHeaders()
-        header["content-type"] = "application/json"
+        context.logger.trace("HTTP API Message received")
 
-        do {
-            context.logger.trace("HTTP API Message received")
-
-            // Route the request to get the action
-            let action = try router.route(event, logger: context.logger).get()
-            context.logger.trace("Action identified: \(action)")
-
-            // Execute the action
-            let responseData = try await action.handle(event: event, logger: context.logger)
-
-            if responseData.isEmpty {
-                return APIGatewayV2Response(statusCode: .noContent)
-            } else {
-                return APIGatewayV2Response(
-                    statusCode: .ok,
-                    headers: header,
-                    body: String(decoding: responseData, as: UTF8.self)
-                )
-            }
-
-        } catch let error as RouterError {
-            return APIGatewayV2Response(
-                statusCode: error.statusCode,
-                headers: header,
-                body: error.description
-            )
-        } catch let error as ActionError {
-            return APIGatewayV2Response(
-                statusCode: .badRequest,
-                headers: header,
-                body: error.description
-            )
-        } catch {
-            header["content-type"] = "text/plain"
-            return APIGatewayV2Response(
-                statusCode: .internalServerError,
-                headers: header,
-                body: "\(error)"
-            )
-        }
+        let response = await router.handle(HTTPRequest(event: event), logger: context.logger)
+        return APIGatewayV2Response(
+            statusCode: response.statusCode,
+            headers: response.headers,
+            body: response.body
+        )
     }
 
     public static func main() async throws {

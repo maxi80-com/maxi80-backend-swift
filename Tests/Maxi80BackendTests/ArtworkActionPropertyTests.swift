@@ -1,6 +1,8 @@
 import AWSLambdaEvents
 import Foundation
+import HTTPTypes
 import Logging
+import Routing
 import Testing
 
 @testable import Maxi80Lambda
@@ -29,8 +31,8 @@ private func makeArtworkAction(
     )
 }
 
-private func makeEvent(artist: String, title: String) throws -> APIGatewayV2Request {
-    try TestHelpers.createAPIGatewayRequest(
+private func makeRequest(artist: String, title: String) throws -> Routing.HTTPRequest {
+    try TestHelpers.createHTTPRequest(
         path: "/artwork",
         queryStringParameters: ["artist": artist, "title": title]
     )
@@ -56,9 +58,9 @@ struct ArtworkActionPropertyTests {
             await mockS3.setPresignedURL("https://example.com/art")
 
             let action = makeArtworkAction(s3Client: mockS3, keyPrefix: keyPrefix)
-            let event = try makeEvent(artist: artist, title: title)
+            let request = try makeRequest(artist: artist, title: title)
 
-            _ = try await action.handle(event: event, logger: testLogger)
+            _ = try await action.handle(request, testLogger)
 
             let records = await mockS3.getCallRecords()
             #expect(records.count == 1)
@@ -82,18 +84,19 @@ struct ArtworkActionPropertyTests {
             await mockS3.setPresignedURL(expectedURL)
 
             let action = makeArtworkAction(s3Client: mockS3)
-            let event = try makeEvent(artist: artist, title: title)
+            let request = try makeRequest(artist: artist, title: title)
 
-            let data = try await action.handle(event: event, logger: testLogger)
-            #expect(!data.isEmpty)
+            let response = try await action.handle(request, testLogger)
+            #expect(response.statusCode == .ok)
 
-            let response = try JSONDecoder().decode(ArtworkResponse.self, from: data)
-            #expect(!response.url.absoluteString.isEmpty)
+            let data = try TestHelpers.body(of: response)
+            let decoded = try JSONDecoder().decode(ArtworkResponse.self, from: data)
+            #expect(!decoded.url.absoluteString.isEmpty)
         }
     }
 
-    // Feature: replace-search-with-image-endpoint, Property 3: Artwork not found returns empty response
-    @Test("Property 3: When artwork does not exist, response is empty Data")
+    // Feature: replace-search-with-image-endpoint, Property 3: Artwork not found returns 204 with no body
+    @Test("Property 3: When artwork does not exist, response is 204 No Content with empty body")
     func artworkNotFoundReturnsEmpty() async throws {
         // Validates: Requirements 2.3, 3.5
         let iterations = 100
@@ -105,9 +108,12 @@ struct ArtworkActionPropertyTests {
             await mockS3.setExists(false)
 
             let action = makeArtworkAction(s3Client: mockS3)
-            let event = try makeEvent(artist: artist, title: title)
+            let request = try makeRequest(artist: artist, title: title)
 
-            let data = try await action.handle(event: event, logger: testLogger)
+            let response = try await action.handle(request, testLogger)
+            #expect(response.statusCode == .noContent)
+
+            let data = try TestHelpers.body(of: response)
             #expect(data.isEmpty)
         }
     }
@@ -125,9 +131,9 @@ struct ArtworkActionPropertyTests {
             await mockS3.setPresignedURL("https://example.com/art")
 
             let action = makeArtworkAction(s3Client: mockS3, urlExpiration: expiration)
-            let event = try makeEvent(artist: randomNonEmptyString(), title: randomNonEmptyString())
+            let request = try makeRequest(artist: randomNonEmptyString(), title: randomNonEmptyString())
 
-            _ = try await action.handle(event: event, logger: testLogger)
+            _ = try await action.handle(request, testLogger)
 
             let expirations = await mockS3.getPresignExpirations()
             #expect(expirations.count == 1)
@@ -151,11 +157,31 @@ struct ArtworkActionPropertyTests {
             )
 
             let action = makeArtworkAction(s3Client: mockS3)
-            let event = try makeEvent(artist: randomNonEmptyString(), title: randomNonEmptyString())
+            let request = try makeRequest(artist: randomNonEmptyString(), title: randomNonEmptyString())
 
             await #expect(throws: (any Error).self) {
-                _ = try await action.handle(event: event, logger: testLogger)
+                _ = try await action.handle(request, testLogger)
             }
+        }
+    }
+
+    // Missing query parameters throw QueryParameterError (which the router maps to 400).
+    @Test("Missing artist or title throws QueryParameterError")
+    func missingParametersThrow() async throws {
+        let mockS3 = MockS3Client()
+        let action = makeArtworkAction(s3Client: mockS3)
+
+        let noParams = try TestHelpers.createHTTPRequest(path: "/artwork")
+        await #expect(throws: QueryParameterError.self) {
+            _ = try await action.handle(noParams, testLogger)
+        }
+
+        let artistOnly = try TestHelpers.createHTTPRequest(
+            path: "/artwork",
+            queryStringParameters: ["artist": "Duran Duran"]
+        )
+        await #expect(throws: QueryParameterError.self) {
+            _ = try await action.handle(artistOnly, testLogger)
         }
     }
 }

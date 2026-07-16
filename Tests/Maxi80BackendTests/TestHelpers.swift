@@ -2,9 +2,32 @@ import AWSLambdaEvents
 import AWSLambdaRuntime
 import Foundation
 import Logging
+import Routing
 
 /// Shared test helpers for creating test objects
 enum TestHelpers {
+
+    /// Creates an `HTTPRequest` (the lambda-kit request wrapper) for the given path.
+    static func createHTTPRequest(
+        path: String,
+        httpMethod: String = "GET",
+        queryStringParameters: [String: String]? = nil
+    ) throws -> HTTPRequest {
+        let event = try createAPIGatewayRequest(
+            path: path,
+            httpMethod: httpMethod,
+            queryStringParameters: queryStringParameters
+        )
+        return HTTPRequest(event: event)
+    }
+
+    /// Extracts a `RouteResponse` body as `Data`, encoding JSON bodies the same way the
+    /// router does. Returns empty `Data` for a bodyless response.
+    static func body(of response: RouteResponse) throws -> Data {
+        let encoded = try response.encoded()
+        guard let body = encoded.body else { return Data() }
+        return Data(body.utf8)
+    }
 
     /// Creates an APIGatewayV2Request using JSON decoding to avoid initialization issues
     static func createAPIGatewayRequest(
@@ -21,10 +44,15 @@ enum TestHelpers {
             queryParamsJson = "{}"
         }
 
+        // API Gateway's `/{proxy+}` integration places the matched URL path (minus the
+        // leading slash) under the `proxy` path parameter. lambda-kit's HTTPRequest reads
+        // its routing path from there, so mirror that here.
+        let proxy = path.hasPrefix("/") ? String(path.dropFirst()) : path
+
         let json = """
             {
                 "version": "2.0",
-                "routeKey": "ANY \(path)",
+                "routeKey": "ANY /{proxy+}",
                 "rawPath": "\(path)",
                 "rawQueryString": "",
                 "cookies": [],
@@ -32,7 +60,7 @@ enum TestHelpers {
                     "accept": "application/json"
                 },
                 "queryStringParameters": \(queryParamsJson),
-                "pathParameters": {},
+                "pathParameters": { "proxy": "\(proxy)" },
                 "stageVariables": {},
                 "requestContext": {
                     "accountId": "123456789",
