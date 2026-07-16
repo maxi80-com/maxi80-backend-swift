@@ -83,7 +83,7 @@ while IFS= read -r key; do
     echo "WOULD CONVERT: $dir -> $palette"
   fi
   converted=$((converted+1))
-done < <(aws s3 ls "s3://$BUCKET/$PREFIX/" --recursive | awk '{print $4}' | grep '/metadata.json$')
+done < <(aws s3 ls "s3://$BUCKET/$PREFIX/" --recursive | sed -E 's/^[0-9-]+ +[0-9:]+ +[0-9]+ +//' | grep '/metadata.json$')
 
 echo
 echo "── Summary ─────────────────────────────"
