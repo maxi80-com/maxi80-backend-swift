@@ -166,4 +166,66 @@ struct MetadataCollectorTests {
         // Reuse the full, decodable fixture from SongSelectorTests (one song with artwork).
         Data(SongSelectorTests.searchResponseJSON(songIDs: ["1"]).utf8)
     }
+
+    // MARK: - Resilience: a track always lands in history, even when enrichment fails
+
+    struct FakeS3Error: Error {}
+
+    /// The entries in the most recent history.json write (via getPutRecords, which works in the
+    /// mock's default non-keyed mode — unlike reading getObject back). Empty if never written.
+    static func lastWrittenHistoryEntries(_ s3: MockS3Client) async throws -> [HistoryEntry] {
+        let puts = await s3.getPutRecords()
+        guard let historyPut = puts.last(where: { $0.key == "\(prefix)/history.json" }) else {
+            return []
+        }
+        return try JSONDecoder().decode(HistoryFile.self, from: historyPut.data).entries
+    }
+
+    @Test("Cache-read failure still records the track with a no-cover placeholder")
+    func cacheReadFailureStillRecordsHistory() async throws {
+        // Reproduces the Yazoo "Don't go (maxi)" incident: the S3 cache read throws for a
+        // cache-miss key. The track must still be recorded (nocover.jpg) rather than vanishing.
+        let s3 = MockS3Client()
+        await s3.setGetObjectMissError(FakeS3Error())
+
+        let collector = Self.makeCollector(rawMetadata: "Yazoo - Don't go (maxi)", s3: s3)
+        try await collector.collect(logger: Self.logger)
+
+        let entries = try await Self.lastWrittenHistoryEntries(s3)
+        let entry = try #require(entries.last)
+        #expect(entry.artist == "Yazoo")
+        #expect(entry.title == "Don't go (maxi)")
+        #expect(entry.artwork == "\(Self.prefix)/Yazoo/Don't go (maxi)/nocover.jpg")
+    }
+
+    @Test("Apple Music search failure still records the track with a no-cover placeholder")
+    func searchFailureStillRecordsHistory() async throws {
+        // Cache miss (default mode → all getObject return nil), then the Apple Music HTTP call throws.
+        let s3 = MockS3Client()
+        let http = MockHTTPClient()
+        await http.setError(FakeS3Error())
+
+        let collector = Self.makeCollector(rawMetadata: "The Cure - Boys don't cry", s3: s3, http: http)
+        try await collector.collect(logger: Self.logger)
+
+        let entries = try await Self.lastWrittenHistoryEntries(s3)
+        let entry = try #require(entries.last)
+        #expect(entry.artist == "The Cure")
+        #expect(entry.title == "Boys don't cry")
+        #expect(entry.artwork.hasSuffix("/nocover.jpg"))
+    }
+
+    @Test("Successful cache-miss collection records exactly one history entry")
+    func freshCollectionRecordsExactlyOnce() async throws {
+        let s3 = MockS3Client()  // keyed mode off → getObject returns nil (no cache, no legacy)
+        let http = MockHTTPClient()
+        await http.setResponse(data: Self.appleMusicResponseWithArtwork(), status: .ok)
+
+        let collector = Self.makeCollector(rawMetadata: "Michael Jackson - Beat it", s3: s3, http: http)
+        try await collector.collect(logger: Self.logger)
+
+        let entries = try await Self.lastWrittenHistoryEntries(s3)
+        #expect(entries.count == 1)
+        #expect(entries.last?.artwork.hasSuffix("/artwork.jpg") == true)
+    }
 }

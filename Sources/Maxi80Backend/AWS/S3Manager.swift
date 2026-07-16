@@ -101,6 +101,11 @@ public struct S3Manager: S3ManagerProtocol, Sendable {
             return nil
         } catch let error as AWSResponseError where error.context?.responseCode == .notFound {
             return nil
+        } catch let error as any AWSErrorType where error.context?.responseCode == .notFound {
+            // Defensive: any Soto error carrying a 404 response is a cache miss, regardless of the
+            // concrete type. Keeps a missing object returning nil even if Soto surfaces the 404 as
+            // a type not matched above. A non-404 error (auth, throttling, transport) still throws.
+            return nil
         }
     }
 

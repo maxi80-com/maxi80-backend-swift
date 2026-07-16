@@ -38,12 +38,27 @@ struct MetadataCollector {
         self.historyManager = historyManager
     }
 
-    /// Runs one collection cycle: read the stream, parse, dedup, and either reuse/migrate the cache
-    /// or collect fresh from Apple Music, recording a history entry in every non-skip branch.
+    /// What to write to history for this invocation: the artwork file name (`artwork.jpg` or
+    /// `nocover.jpg`) and the optional dominant color. `nil` from `enrich` means "dedup skip —
+    /// record nothing".
+    private struct HistoryOutcome {
+        let file: String
+        let color: String?
+    }
+
+    /// Runs one collection cycle: read the stream, parse, then enrich (dedup / cache / migrate /
+    /// search / download) and record history.
+    ///
+    /// History is recorded in exactly ONE place — here — for every track that is not a dedup skip.
+    /// If enrichment throws for any reason (S3 cache read, Apple Music search, artwork download, S3
+    /// writes), the track is still recorded with a `nocover.jpg` placeholder rather than being lost.
+    /// The only case with no history entry is when we never learn the track: a stream-read failure
+    /// or empty metadata.
     func collect(logger: Logger) async throws {
         logger.info("Invocation started")
 
-        // Step 1: Read Icecast stream metadata
+        // Step 1: Read Icecast stream metadata. Without this we have no track to record, so a
+        // failure here propagates (and the invocation is retried) rather than recording a placeholder.
         let rawMetadata: String
         do {
             rawMetadata = try await icecastReader.readMetadata(from: streamURL, logger: logger)
@@ -61,16 +76,48 @@ struct MetadataCollector {
         }
         logger.info("Parsed: artist=\(artist), title=\(title)")
 
-        // Step 2b: Check if this is the same track as the latest history entry — skip everything if so
+        // Enrich and decide what to record. Any thrown error degrades to a no-cover entry so the
+        // track always lands in history — this is the fix for tracks vanishing when a cache read /
+        // search / write failed upstream of the old per-branch recordHistory calls.
+        let outcome: HistoryOutcome?
         do {
-            logger.debug("DIAG: before readHistory (first S3 call of this invocation)")
+            outcome = try await enrich(artist: artist, title: title, rawMetadata: rawMetadata, logger: logger)
+        } catch {
+            logger.error(
+                "Enrichment failed for \(artist) - \(title), recording without cover: \(type(of: error)): \(error)"
+            )
+            outcome = HistoryOutcome(file: "nocover.jpg", color: nil)
+        }
+
+        guard let outcome else {
+            logger.debug("Path: dedup skip — no history entry recorded for \(artist) - \(title)")
+            return
+        }
+
+        await recordHistory(artist: artist, title: title, file: outcome.file, color: outcome.color, logger: logger)
+        logger.info("Successfully collected metadata for \(artist) - \(title) [\(outcome.file)]")
+    }
+
+    /// The enrichment pipeline: dedup check, Maxi80 skip, S3 cache hit, legacy-title migration, or
+    /// fresh Apple Music collection. Returns the `HistoryOutcome` to record, or `nil` for a dedup
+    /// skip. Throwing propagates to `collect`, which records a no-cover fallback entry.
+    private func enrich(
+        artist: String,
+        title: String,
+        rawMetadata: String,
+        logger: Logger
+    ) async throws -> HistoryOutcome? {
+        // Step 2b: Check if this is the same track as the latest history entry — skip everything if so.
+        // A failure to read history here is non-fatal: we log and fall through to (re)collect.
+        do {
+            logger.debug("Path: reading history for dedup check")
             let history = try await historyManager.readHistory()
-            logger.debug("DIAG: after readHistory — \(history.entries.count) entries")
+            logger.debug("Path: read history — \(history.entries.count) entries")
             if let latest = history.entries.max(by: { $0.timestamp < $1.timestamp }),
                 latest.artist == artist, latest.title == title
             {
                 logger.info("Same track as latest history entry (\(artist) - \(title)), skipping")
-                return
+                return nil
             }
         } catch {
             logger.warning("Failed to read history for dedup check, continuing: \(error)")
@@ -79,14 +126,13 @@ struct MetadataCollector {
         // Step 2c: If artist is "maxi80" or "maxi 80" (case-insensitive), skip Apple Music search
         let normalizedArtist = artist.lowercased().trimmingWhitespace()
         if normalizedArtist == "maxi80" || normalizedArtist == "maxi 80" {
-            logger.info("Artist is Maxi 80, skipping Apple Music search")
-            await recordHistory(artist: artist, title: title, file: "nocover.jpg", logger: logger)
-            return
+            logger.debug("Path: Maxi 80 filler → recording nocover, skipping Apple Music search")
+            return HistoryOutcome(file: "nocover.jpg", color: nil)
         }
 
         // Step 3: Check S3 cache — if already collected, reuse the cached metadata (including
         // the dominant color) instead of calling Apple Music again.
-        logger.debug("DIAG: before readMetadata (S3 cache check)")
+        logger.debug("Path: checking S3 cache for \(artist)/\(title)")
         if let cached = try await s3Writer.readMetadata(artist: artist, title: title) {
             logger.info("Cache hit for \(artist)/\(title), skipping collection")
 
@@ -95,6 +141,7 @@ struct MetadataCollector {
             // future cache hits are free. A failed lookup records without color, never aborts.
             var color = cached.color
             if color == nil {
+                logger.debug("Path: cache hit, color absent → attempting backfill")
                 do {
                     if let song = try await searchAppleMusic(artist: artist, title: title, logger: logger).song,
                         let backfilled = dominantColor(for: song)
@@ -109,16 +156,20 @@ struct MetadataCollector {
                         )
                         try await s3Writer.writeMetadata(updated, artist: artist, title: title, logger: logger)
                         logger.info("Backfilled color \(backfilled) for cached \(artist) - \(title)")
+                    } else {
+                        logger.debug("Path: backfill found no song/color")
                     }
                 } catch {
                     logger.warning(
                         "Color backfill failed on cache hit for \(artist) - \(title), recording without color: \(error)"
                     )
                 }
+            } else {
+                logger.debug("Path: cache hit, color already present")
             }
 
-            await recordHistory(artist: artist, title: title, file: "artwork.jpg", color: color, logger: logger)
-            return
+            logger.debug("Path: cache hit → recording artwork")
+            return HistoryOutcome(file: "artwork.jpg", color: color)
         }
 
         // Step 3b: Migrate legacy cache. Titles used to be stored with trailing parentheses
@@ -132,6 +183,7 @@ struct MetadataCollector {
             do {
                 if let legacy = try await s3Writer.readMetadata(artist: artist, title: stripped) {
                     logger.info("Migrating stripped→full title cache: \(artist) - \(stripped) → \(title)")
+                    logger.debug("Path: migration entered")
 
                     for file in ["artwork.jpg", "search.json", "metadata.json"] {
                         do {
@@ -157,14 +209,7 @@ struct MetadataCollector {
                         color: legacy.color
                     )
                     try await s3Writer.writeMetadata(migrated, artist: artist, title: title, logger: logger)
-
-                    await recordHistory(
-                        artist: artist,
-                        title: title,
-                        file: "artwork.jpg",
-                        color: legacy.color,
-                        logger: logger
-                    )
+                    logger.debug("Path: migration rewrote metadata.json under full title")
 
                     for file in ["artwork.jpg", "search.json", "metadata.json"] {
                         do {
@@ -173,7 +218,9 @@ struct MetadataCollector {
                             logger.warning("Migration delete of \(file) failed for \(artist) - \(stripped): \(error)")
                         }
                     }
-                    return
+
+                    logger.debug("Path: migration complete → recording artwork")
+                    return HistoryOutcome(file: "artwork.jpg", color: legacy.color)
                 }
             } catch {
                 logger.warning("Legacy-title migration failed for \(artist) - \(title), collecting fresh: \(error)")
@@ -181,17 +228,14 @@ struct MetadataCollector {
         }
 
         // Step 4: Search Apple Music
-        logger.debug("DIAG: cache miss, before Apple Music search (HTTP, not AWS SDK)")
+        logger.debug("Path: cache miss → searching Apple Music for \(artist) - \(searchTitle(title))")
         let (searchData, bestMatch) = try await searchAppleMusic(artist: artist, title: title, logger: logger)
 
         // Step 5: Select best match
         guard let song = bestMatch else {
             logger.warning("No search results for \(artist) - \(title), skipping")
-
-            // Record history entry even when Apple Music has no results
-            await recordHistory(artist: artist, title: title, file: "nocover.jpg", logger: logger)
-
-            return
+            logger.debug("Path: no search results → recording nocover")
+            return HistoryOutcome(file: "nocover.jpg", color: nil)
         }
         logger.info("Selected song: \(song.attributes.name) by \(song.attributes.artistName ?? "Unknown")")
 
@@ -231,23 +275,16 @@ struct MetadataCollector {
             try await s3Writer.writeArtwork(artworkData, artist: artist, title: title, logger: logger)
         }
 
-        // Record history entry for cache miss
-        await recordHistory(
-            artist: artist,
-            title: title,
-            file: artworkData != nil ? "artwork.jpg" : "nocover.jpg",
-            color: artworkColor,
-            logger: logger
-        )
-
-        logger.info("Successfully collected metadata for \(artist) - \(title)")
+        let file = artworkData != nil ? "artwork.jpg" : "nocover.jpg"
+        logger.debug("Path: fresh collection complete → recording \(file)")
+        return HistoryOutcome(file: file, color: artworkColor)
     }
 
     private func recordHistory(artist: String, title: String, file: String, color: String? = nil, logger: Logger) async
     {
         let artworkKey = buildS3Key(prefix: s3Writer.config.keyPrefix, artist: artist, title: title, file: file)
         let timestamp = Date.now.formatted(.iso8601)
-        logger.debug("DIAG: before recordEntry (S3 read+write history.json)")
+        logger.debug("recordHistory: artist=\(artist), title=\(title), file=\(file), color=\(color ?? "nil")")
         await historyManager.recordEntry(
             artist: artist,
             title: title,

@@ -20,6 +20,9 @@ actor MockS3Client: S3ManagerProtocol {
     /// `getObjectResults` queue — useful for tests that issue getObject in a hard-to-predict order.
     private var getObjectByKey: [String: Data] = [:]
     private var useKeyedGetObject = false
+    /// When set, `getObject` throws this for any key NOT present in `getObjectByKey` (in keyed mode).
+    /// Models S3 read failures on cache-miss keys (e.g. a non-404 error) without disturbing hits.
+    private var getObjectMissError: (any Error)?
     private var copyRecords: [(bucket: String, fromKey: String, toKey: String)] = []
     private var deleteRecords: [(bucket: String, key: String)] = []
     private var existsIndex = 0
@@ -67,7 +70,13 @@ actor MockS3Client: S3ManagerProtocol {
 
     func getObject(bucket: String, key: String) async throws -> Data? {
         if useKeyedGetObject {
-            return getObjectByKey[key]
+            if let data = getObjectByKey[key] {
+                return data
+            }
+            if let error = getObjectMissError {
+                throw error
+            }
+            return nil
         }
         guard getObjectIndex < getObjectResults.count else {
             return nil
@@ -96,6 +105,13 @@ actor MockS3Client: S3ManagerProtocol {
     func setObject(key: String, data: Data) {
         useKeyedGetObject = true
         getObjectByKey[key] = data
+    }
+
+    /// Make keyed-mode `getObject` throw for any key without a registered object. Models an S3 read
+    /// failure on cache-miss keys. Enables keyed mode so registered objects still resolve as hits.
+    func setGetObjectMissError(_ error: any Error) {
+        useKeyedGetObject = true
+        getObjectMissError = error
     }
 
     func getCopyRecords() -> [(bucket: String, fromKey: String, toKey: String)] {
@@ -144,6 +160,7 @@ actor MockS3Client: S3ManagerProtocol {
         getObjectResults.removeAll()
         getObjectByKey.removeAll()
         useKeyedGetObject = false
+        getObjectMissError = nil
         copyRecords.removeAll()
         deleteRecords.removeAll()
         existsIndex = 0
