@@ -16,7 +16,7 @@
 #
 # Usage:
 #   scripts/setup-github-oidc.sh
-#   AWS_PROFILE=maxi80 GITHUB_REPO=sebsto/maxi80-backend-swift scripts/setup-github-oidc.sh
+#   AWS_PROFILE=maxi80 GITHUB_REPO=maxi80-com/maxi80-backend-swift scripts/setup-github-oidc.sh
 #
 set -euo pipefail
 
@@ -25,11 +25,14 @@ set -euo pipefail
 # ----------------------------------------------------------------------------
 AWS_PROFILE="${AWS_PROFILE:-maxi80}"
 AWS_REGION="${AWS_REGION:-eu-central-1}"
-GITHUB_REPO="${GITHUB_REPO:-sebsto/maxi80-backend-swift}"   # owner/repo
+GITHUB_REPO="${GITHUB_REPO:-maxi80-com/maxi80-backend-swift}"   # owner/repo
 GITHUB_REF="${GITHUB_REF:-refs/heads/main}"                 # branch the role trusts
 ROLE_NAME="${ROLE_NAME:-Maxi80BackendGitHubDeploy}"
 POLICY_NAME="Maxi80BackendDeployPolicy"
 STACK_NAME="${STACK_NAME:-Maxi80Backend-2025}"
+# The bootstrap stack `sam deploy` auto-creates (with resolve_s3) to hold its
+# managed artifact bucket. CloudFormation actions must be allowed on it too.
+SAM_MANAGED_STACK_NAME="${SAM_MANAGED_STACK_NAME:-aws-sam-cli-managed-default}"
 
 OIDC_HOST="token.actions.githubusercontent.com"
 OIDC_URL="https://${OIDC_HOST}"
@@ -148,6 +151,7 @@ DEPLOY_POLICY="$(cat <<JSON
       ],
       "Resource": [
         "arn:aws:cloudformation:${AWS_REGION}:${ACCOUNT_ID}:stack/${STACK_NAME}/*",
+        "arn:aws:cloudformation:${AWS_REGION}:${ACCOUNT_ID}:stack/${SAM_MANAGED_STACK_NAME}/*",
         "arn:aws:cloudformation:${AWS_REGION}:aws:transform/Serverless-2016-10-31"
       ]
     },
