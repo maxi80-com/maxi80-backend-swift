@@ -1,12 +1,7 @@
+import Foundation
 import Testing
 
 @testable import IcecastMetadataCollector
-
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
-import Foundation
-#endif
 
 @Suite("HistoryManager Tests")
 struct HistoryManagerTests {

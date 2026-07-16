@@ -1,15 +1,10 @@
+import Foundation
 import Logging
 import NIOHTTP1
 import Testing
 
 @testable import IcecastMetadataCollector
 @testable import Maxi80Backend
-
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
-import Foundation
-#endif
 
 @Suite("MetadataCollector Pipeline Tests")
 struct MetadataCollectorTests {
