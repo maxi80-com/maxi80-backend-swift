@@ -1,6 +1,6 @@
+public import Logging
 public import SotoCore
 import SotoSSM
-public import Logging
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials

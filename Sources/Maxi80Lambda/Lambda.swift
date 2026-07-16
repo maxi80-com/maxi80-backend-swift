@@ -3,6 +3,7 @@ import AWSLambdaRuntime
 import Logging
 import Maxi80Backend
 import Routing
+
 import class SotoCore.AWSClient
 import struct SotoCore.Region
 
@@ -42,7 +43,9 @@ struct Maxi80Lambda: LambdaHandler {
                 let awsClient = AWSClient()
                 // Resolve actual bucket region (may differ from Lambda's region)
                 let bucketRegion = await resolveBucketRegion(
-                    bucket: bucket, client: awsClient, configuredRegion: region
+                    bucket: bucket,
+                    client: awsClient,
+                    configuredRegion: region
                 )
                 logger.debug("Bucket \(bucket) resolved to region: \(bucketRegion)")
                 resolvedS3Client = S3Manager(client: awsClient, region: bucketRegion)

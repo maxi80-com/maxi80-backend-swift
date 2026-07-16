@@ -1,9 +1,10 @@
+import Maxi80Backend
+
 #if canImport(FoundationEssentials)
 import FoundationEssentials
 #else
 import Foundation
 #endif
-import Maxi80Backend
 
 struct DominantColor {
 

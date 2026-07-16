@@ -6,7 +6,7 @@ extension StringProtocol {
     /// and newlines.
     public func trimmingWhitespace() -> String {
         guard let start = firstIndex(where: { !$0.isWhitespace }),
-              let end = lastIndex(where: { !$0.isWhitespace })
+            let end = lastIndex(where: { !$0.isWhitespace })
         else {
             return ""
         }
