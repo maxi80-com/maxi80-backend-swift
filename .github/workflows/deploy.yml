@@ -1,0 +1,122 @@
+name: Build, Test & Deploy
+
+# Every push to main runs the full pipeline: test → cross-compile the Lambda
+# zips → deploy the SAM stack. Deployment uses GitHub OIDC to assume a
+# short-lived AWS role (no long-lived access keys stored in the repo).
+on:
+  push:
+    branches: [main]
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+# One in-flight deploy at a time; a newer push supersedes an older queued run
+# but never cancels a deploy already talking to CloudFormation.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # required to request the OIDC token for AWS
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  # Amazon Linux 2023 base image the lambda-build plugin cross-compiles inside.
+  SWIFT_AL2023_IMAGE: swift:amazonlinux2023
+
+jobs:
+  deploy:
+    name: Build, test and deploy
+    # arm64 runner: the Lambdas are arm64 (template.yaml Architectures: arm64), so we
+    # cross-compile inside an arm64 container natively — no QEMU emulation.
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No Swift install step: the ubuntu-24.04-arm runner image ships Swift 6.3.3
+      # (matches this package's swift-tools-version: 6.3). The Lambda artifacts are
+      # built separately inside the amazonlinux2023 container by the plugin below.
+      - name: Show Swift version
+        run: swift --version
+
+      # Cache the resolved SwiftPM dependencies and build products. Keyed on
+      # Package.resolved so a dependency bump busts the cache; the restore-keys
+      # fall back to the latest cache on the same OS for incremental reuse.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            swiftpm-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Test
+        run: swift test
+
+      # Pre-pull the Swift AL2023 image so the plugin does not, and cache it in the
+      # Docker layer cache across runs to shave cold-start time off the build.
+      - name: Cache Docker image (Swift AL2023)
+        uses: actions/cache@v4
+        with:
+          path: ~/.docker-image-cache
+          key: docker-${{ env.SWIFT_AL2023_IMAGE }}
+      - name: Load or pull Swift AL2023 image
+        run: |
+          set -euo pipefail
+          IMG_TAR="$HOME/.docker-image-cache/swift-al2023.tar"
+          if [ -f "$IMG_TAR" ]; then
+            echo "Loading cached image"
+            docker load -i "$IMG_TAR"
+          else
+            echo "Pulling ${SWIFT_AL2023_IMAGE}"
+            docker pull "${SWIFT_AL2023_IMAGE}"
+            mkdir -p "$HOME/.docker-image-cache"
+            docker save "${SWIFT_AL2023_IMAGE}" -o "$IMG_TAR"
+          fi
+
+      # Cross-compile the Lambda zips using the swift-aws-lambda-runtime plugin with
+      # the Docker backend (--cross-compile docker). This mirrors `make build` but
+      # swaps Apple's `container` CLI (unavailable on GitHub runners) for `docker`.
+      # --disable-docker-image-update: we already loaded/pulled the image above.
+      - name: Build Lambda artifacts
+        run: |
+          swift package \
+            --disable-sandbox \
+            --allow-network-connections docker \
+            lambda-build \
+            --cross-compile docker \
+            --disable-docker-image-update \
+            --base-docker-image "${SWIFT_AL2023_IMAGE}" \
+            --products IcecastMetadataCollector \
+            --products Maxi80Lambda \
+            --products AuthorizerLambda
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      # Assume the deploy role via OIDC — short-lived credentials, no stored secrets.
+      # The role ARN is stored as a repo variable (Settings → Secrets and variables →
+      # Actions → Variables) so it is not hardcoded here.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-maxi80-deploy-${{ github.run_id }}
+
+      # Deploy the prebuilt zips. Uses the `ci` config env (no local profile, unlike
+      # `dev`), non-interactive, and fails the job on any real error but not on the
+      # "no changes to deploy" case.
+      - name: Deploy (SAM)
+        run: |
+          sam deploy \
+            --config-env ci \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --no-progressbar

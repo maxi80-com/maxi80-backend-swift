@@ -19,3 +19,17 @@ parameter_overrides = "MetadataBucket=artwork.maxi80.com"
 
 [dev.global.parameters]
 region = "eu-central-1"
+
+# CI config env: same stack as `dev`, but no local AWS `profile` — GitHub Actions
+# supplies credentials via OIDC (assumed role), so SAM uses the ambient environment.
+[ci.deploy.parameters]
+stack_name = "Maxi80Backend-2025"
+resolve_s3 = true
+s3_prefix = "Maxi80Backend-2025"
+region = "eu-central-1"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+parameter_overrides = "MetadataBucket=artwork.maxi80.com"
+
+[ci.global.parameters]
+region = "eu-central-1"
