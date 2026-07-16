@@ -131,6 +131,11 @@ Resources:
                 - Effect: Allow
                   Action:
                     - s3:GetBucketLocation
+                    # ListBucket is required so a GetObject on a NOT-yet-collected key returns a
+                    # clean 404 (→ cache miss). Without it S3 returns 403 AccessDenied to principals
+                    # that can't list the bucket, which the collector cannot distinguish from a real
+                    # auth failure — every brand-new track then degrades to nocover.jpg.
+                    - s3:ListBucket
                   Resource: !Sub "arn:aws:s3:::${MetadataBucket}"
          Events:
             ScheduleEvent:
