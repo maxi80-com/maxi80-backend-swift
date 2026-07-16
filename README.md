@@ -1,91 +1,87 @@
 # Maxi80 Backend
 
-A Swift-based serverless backend for the Maxi80 radio station iOS app, providing station information, now-playing artwork, and play history through AWS Lambda and an HTTP API Gateway.
+The server-side Swift backend for **Maxi 80**, the French 80s radio station. It is a set of
+AWS Lambda functions that (1) serve a small authenticated HTTP API to the mobile apps and
+(2) collect now-playing metadata and album artwork from the live Icecast stream into S3.
 
-## Overview
+The iOS / Android / Skip client lives in a separate repository — nothing here is client code.
 
-Maxi80 Backend is a modern Swift serverless application that provides:
+> For a deeper architectural walkthrough see [`CLAUDE.md`](CLAUDE.md). For collector operations
+> (local invoke, log filtering) see [`README-IcecastMetadataCollector.md`](README-IcecastMetadataCollector.md).
 
-- **Station Information**: Returns Maxi80 radio station details and streaming information
-- **Now-Playing Artwork**: Returns pre-signed S3 URLs for the cover art of the currently playing song
-- **Play History**: Serves the recent play history collected from the Icecast stream
-- **Metadata Collection**: A scheduled Lambda reads the Icecast stream, fetches artwork from Apple Music, and stores metadata and history in S3
-- **Secure Authentication**: HTTP API requests are authorized by a Lambda authorizer validating an API key stored in AWS Systems Manager Parameter Store
-- **CLI Tools**: Command-line interface for testing and secret management
+## What it does
+
+- **Station information** — `GET /station` returns the station's name, stream URL, and descriptions.
+- **Now-playing artwork** — `GET /artwork` returns a pre-signed S3 URL for a song's cover art.
+- **Play history** — `GET /history` serves the recent play history collected from the stream.
+- **Metadata collection** — a scheduled Lambda reads the Icecast stream every 3 minutes, enriches
+  each track via the Apple Music API, and stores metadata, artwork, and a rolling `history.json` in S3.
+- **Authentication** — every HTTP API request is checked by a Lambda authorizer that validates the
+  `Authorization` header against an API key in AWS Systems Manager Parameter Store.
 
 ## Architecture
 
 ```
-┌─────────────┐   ┌──────────────┐   ┌────────────────┐   ┌──────────────┐
-│   iOS App   │──▶│   HTTP API   │──▶│ Lambda         │──▶│  Maxi80Lambda│
-│             │   │  (API GW v2) │   │ Authorizer     │   │  (Swift)     │
-└─────────────┘   └──────────────┘   └────────────────┘   └──────┬───────┘
-                                             │                    │
-                                             ▼                    ▼
-                                     ┌────────────────┐   ┌──────────────┐
-                                     │ Parameter Store│   │  S3 (artwork │
-                                     │ (/maxi80/*)    │   │  + history)  │
-                                     └────────────────┘   └──────▲───────┘
-                                                                  │
-   ┌─────────────────┐   ┌───────────────────────┐               │
-   │ Apple Music API │◀──│ IcecastMetadataCollector│─────────────┘
-   │                 │   │ (scheduled, every 3 min)│
-   └─────────────────┘   └───────────────────────┘
+┌───────────┐   ┌──────────────┐   ┌────────────────┐   ┌──────────────┐
+│ Mobile app│──▶│   HTTP API   │──▶│ AuthorizerLambda│──▶│ Maxi80Lambda │
+│           │   │ (API GW v2)  │   │ (API key check) │   │  (routing)   │
+└───────────┘   └──────────────┘   └───────┬────────┘   └──────┬───────┘
+                                           │                    │
+                                           ▼                    ▼
+                                   ┌────────────────┐   ┌──────────────┐
+                                   │ Parameter Store│   │  S3 (artwork │
+                                   │  (/maxi80/*)   │   │  + history)  │
+                                   └────────────────┘   └──────▲───────┘
+                                                                │
+  ┌─────────────────┐   ┌──────────────────────────┐           │
+  │ Apple Music API │◀──│ IcecastMetadataCollector │───────────┘
+  │                 │   │  (scheduled, every 3 min) │
+  └─────────────────┘   └──────────────────────────┘
 ```
 
-## Project Structure
+The project is one Swift Package with a shared library and several executables:
 
-```
-Sources/
-├── Maxi80Lambda/           # AWS Lambda handler (HTTP API backend)
-│   ├── Lambda.swift        # Main Lambda function
-│   ├── Router.swift        # Request routing
-│   └── Actions.swift       # Endpoint action handlers (station, artwork, history)
-├── AuthorizerLambda/       # Lambda authorizer validating the API key
-│   └── Lambda.swift
-├── Maxi80Backend/          # Core backend library
-│   ├── AppleMusic/         # Apple Music API integration
-│   │   ├── AppleMusic.swift
-│   │   ├── AppleMusicAuthProvider.swift
-│   │   ├── AppleMusicAuthentication.swift
-│   │   └── AppleMusicModel.swift
-│   ├── AWS/                # AWS service integrations
-│   │   ├── Region.swift
-│   │   ├── S3Manager.swift
-│   │   └── ParameterStoreManager.swift
-│   ├── HTTPClient/         # HTTP client utilities
-│   │   ├── HTTPClient.swift
-│   │   └── HTTPLogger.swift
-│   ├── Endpoint.swift      # API endpoint definitions
-│   ├── Maxi80APIClient.swift
-│   ├── MetadataParser.swift
-│   └── Station.swift       # Station data model
-├── IcecastMetadataCollector/ # Scheduled Icecast stream metadata collector Lambda
-│   ├── Lambda.swift
-│   ├── IcecastReader.swift
-│   ├── ArtworkDownloader.swift
-│   ├── CollectedMetadata.swift
-│   ├── Errors.swift
-│   ├── HistoryManager.swift
-│   ├── S3Writer.swift
-│   └── SongSelector.swift
-└── Maxi80CLI/              # Command-line interface
-    ├── CLIMain.swift       # CLI entry point
-    ├── CLISearch.swift     # Search command
-    ├── CLIManageSecret.swift # Secret management
-    ├── Region+ExpressibleByArgument.swift
-    └── GlobalOptions.swift # Shared CLI options
-```
+| Target | Kind | Role |
+|--------|------|------|
+| `Maxi80Backend` | library | Shared core: AWS adapters, Apple Music client, HTTP client, metadata parser, models. Depended on by everything else. |
+| `Maxi80Lambda` | executable (Lambda) | The HTTP API behind API Gateway (HTTP API v2). Routes `/station`, `/artwork`, `/history`. |
+| `AuthorizerLambda` | executable (Lambda) | API Gateway Lambda authorizer validating the `Authorization` header against `/maxi80/api-key`. |
+| `IcecastMetadataCollector` | executable (Lambda) | Scheduled collector: reads the stream, enriches via Apple Music, writes to S3, maintains `history.json`. |
+| `SotoS3`, `SotoSSM` | libraries | Minimal, code-generated AWS service clients (soto-codegenerator), each depending only on `SotoCore`. |
+| `Maxi80CLI` | executable | Local dev CLI (`store-secrets`, `get-secrets`, `search`). |
+| `ParseMetadata`, `CollectAppleMusic` | executables | One-off local scripts. Not deployed. |
 
-## API Endpoints
+### Routing (lambda-kit)
 
-All endpoints require an `Authorization` header carrying the API key, which is
-validated by the Lambda authorizer.
+`Maxi80Lambda` uses the `Routing` library from a **fork** of SongShift/lambda-kit
+(`sebsto/lambda-kit`, branch `support-runtime-3`) that widens the runtime pin to 3.x. `Maxi80Router.swift`
+owns the route table; `Actions.swift` holds one `Action` struct per endpoint — `StationAction`,
+`ArtworkAction`, `HistoryAction` — each constructor-injected with its dependencies. This replaced the
+project's older custom router. `Package.resolved` pins the exact fork commit.
 
-### GET /station
-Returns Maxi80 radio station information.
+### AWS clients (Soto, not aws-sdk-swift)
 
-**Response:**
+AWS access goes through minimal, hand-generated Soto clients under `Sources/Soto/{S3,SSM}` (emitted by
+soto-codegenerator; regenerate with `scripts/generate-soto-services.sh`). These replaced **aws-sdk-swift**,
+whose aws-crt TLS layer crashed at Lambda cold start. Only `SotoCore` (pure Swift, AsyncHTTPClient
+transport) is used at runtime. Lambda handlers go through the `S3Manager` / `ParameterStoreManager`
+adapters in `Sources/Maxi80Backend/AWS/`, never raw Soto calls.
+
+### Collector history invariant
+
+A played track **always** lands in `history.json`, even when artwork enrichment fails: the collector
+records history in exactly one place and degrades to a `nocover.jpg` entry on any thrown error. Only a
+stream-read failure or empty metadata records nothing. See the collector section in
+[`CLAUDE.md`](CLAUDE.md) for the full pipeline.
+
+## API endpoints
+
+All endpoints require an `Authorization` header carrying the API key, validated by the Lambda authorizer.
+
+### `GET /station`
+
+Returns the station information (`Station.default`):
+
 ```json
 {
   "name": "Maxi 80",
@@ -99,269 +95,190 @@ Returns Maxi80 radio station information.
 }
 ```
 
-### GET /artwork?artist={artist}&title={title}
-Returns a pre-signed S3 URL for the cover art of the given song, if it has been
-collected.
+### `GET /artwork?artist={artist}&title={title}`
 
-**Parameters:**
-- `artist` (required): Artist name
-- `title` (required): Song title
+Checks S3 for `v2/<artist>/<title>/artwork.jpg`. Returns a pre-signed GET URL if present:
 
-**Response:**
-Returns a JSON object with a pre-signed URL when the artwork exists:
 ```json
-{
-  "url": "https://<bucket>.s3.<region>.amazonaws.com/v2/<artist>/<title>/artwork.jpg?..."
-}
+{ "url": "https://<bucket>.s3.<region>.amazonaws.com/v2/<artist>/<title>/artwork.jpg?..." }
 ```
-When no artwork is found, the endpoint responds with `204 No Content` and an
-empty body.
 
-### GET /history
-Returns the recent play history collected from the Icecast stream.
+If no artwork exists, responds with `204 No Content`. Missing `artist` or `title` parameters return `400`.
 
-**Response:**
-```json
-{
-  "entries": [
-    {
-      "artist": "Pink Floyd",
-      "title": "Another Brick in the Wall",
-      "artwork": "v2/Pink Floyd/Another Brick in the Wall/artwork.jpg",
-      "timestamp": "2025-01-15T14:30:00Z"
-    }
-  ]
-}
-```
-If no history has been collected yet, an empty `{"entries":[]}` object is
-returned.
+### `GET /history`
+
+Streams `v2/history.json` back verbatim. If no history has been collected yet, returns `{"entries":[]}`.
 
 ## Prerequisites
 
-- **Swift 6.2+**
-- **Docker** (for Lambda packaging)
-- **AWS CLI** configured with appropriate credentials
+- **Swift 6.3+** toolchain (native build requires **macOS 26+**)
+- **Docker** — used to cross-compile the Lambda binaries for Amazon Linux 2023
+- **AWS CLI** configured with the `maxi80` profile
 - **SAM CLI** for deployment
 - **Apple Music API credentials** (Team ID, Key ID, Private Key)
 
-## Setup
-
-### 1. Clone and Install Dependencies
+## Build & test locally
 
 ```bash
-git clone <repository-url>
-cd maxi-80-backend-swift
-swift package resolve
+swift build          # native macOS build (fast dev loop)
+swift test           # full test suite (Swift Testing)
+make test            # same as swift test
+make format          # swift-format in place over Package.swift, Sources, Tests
 ```
 
-### 2. Configure AWS Credentials
-
-Set up your AWS profile for the target account:
+Run a single test suite or test:
 
 ```bash
-aws configure --profile maxi80
-# Enter your AWS Access Key ID, Secret Access Key, and region (eu-central-1)
+swift test --filter MetadataCollectorTests
+swift test --filter HistoryManagerTests
 ```
 
-### 3. Store Apple Music Credentials
-
-Create a `Sources/Maxi80CLI/Secret.swift` file (not tracked in git):
-
-```swift
-import Maxi80Backend
-
-enum Secret {
-    static let name = "/maxi80/apple-music-key"
-    static let appleMusicSecret = AppleMusicSecret(
-        privateKey: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
-        teamId: "YOUR_TEAM_ID",
-        keyId: "YOUR_KEY_ID"
-    )
-}
-```
-
-Store the secret in AWS Systems Manager Parameter Store:
-
-```bash
-swift run Maxi80CLI --profile maxi80 --region eu-central-1 store-secrets
-```
-
-You also need to store the API key used by the Lambda authorizer at
-`/maxi80/api-key` (a `SecureString` parameter).
-
-## Building and Deployment
-
-### Build the Lambda Functions
-
-```bash
-make build
-```
-
-This command:
-- Compiles both Lambda functions (Maxi80Lambda and IcecastMetadataCollector) in a single Docker invocation
-- Strips debug symbols from the binaries to reduce size (~190 MB → ~85 MB)
-- Copies the bootstraps and template into `.aws-sam/build/`
-
-### Deploy to AWS
-
-```bash
-make deploy
-```
-
-This deploys the entire stack including:
-- Maxi80Lambda function (HTTP API backend)
-- AuthorizerLambda function (API key Lambda authorizer)
-- IcecastMetadataCollector function (scheduled stream metadata collector)
-- HTTP API Gateway with a Lambda authorizer
-- IAM roles and policies
-- CloudWatch alarms and SNS topic for monitoring
-
-### Format Code
-
-```bash
-make format
-```
-
-## Testing the API
-
-### Test Station Endpoint
-
-```bash
-make call-station
-```
-
-### Test Artwork Endpoint
-
-```bash
-make call-artwork
-```
-
-### Test History Endpoint
-
-```bash
-make call-history
-```
-
-### Test an Unauthorized Request
-
-```bash
-make call-unauthorized
-```
-
-### List Parameters (including the API key)
-
-```bash
-make get-parameters
-```
-
-## CLI Usage
-
-The project includes a command-line interface for testing and management:
-
-### Search Apple Music
-
-```bash
-swift run Maxi80CLI --profile maxi80 --region eu-central-1 search "Pink Floyd"
-```
-
-### Manage Secrets
-
-```bash
-# Store secrets
-swift run Maxi80CLI --profile maxi80 --region eu-central-1 store-secrets
-
-# Retrieve secrets
-swift run Maxi80CLI --profile maxi80 --region eu-central-1 get-secrets
-```
+`swift build` compiles natively for development and tests only. Deployable artifacts are
+**cross-compiled for Amazon Linux 2023 in Docker** — never ship a native macOS binary.
 
 ## Configuration
 
-### Environment Variables
+Runtime configuration is passed to the functions as environment variables (defaults set in
+`template.yaml`):
 
-The backend functions use these environment variables:
+**Maxi80Lambda**
+- `S3_BUCKET` — bucket holding collected artwork and history
+- `KEY_PREFIX` — key prefix within the bucket (`v2`)
+- `URL_EXPIRATION` — pre-signed URL lifetime in seconds (`3600`)
 
-**Maxi80Lambda** (HTTP API backend):
-- `S3_BUCKET`: Bucket holding collected artwork and history (default: `artwork.maxi80.com`)
-- `KEY_PREFIX`: Key prefix within the bucket (default: `v2`)
-- `URL_EXPIRATION`: Pre-signed URL lifetime in seconds (default: `3600`)
-- `AWS_REGION`: AWS region for services
+**AuthorizerLambda**
+- `API_KEY_PARAMETER` — Parameter Store path of the API key (`/maxi80/api-key`)
 
-**AuthorizerLambda**:
-- `API_KEY_PARAMETER`: Parameter Store path of the API key (default: `/maxi80/api-key`)
+**IcecastMetadataCollector**
+- `STREAM_URL` — Icecast stream URL (`https://audio1.maxi80.com`)
+- `S3_BUCKET`, `KEY_PREFIX` — S3 destination for metadata and history
+- `SECRETS` — Parameter Store path of the Apple Music key (`/maxi80/apple-music-key`)
+- `MAX_HISTORY_SIZE` — maximum number of history entries to keep (`100`)
 
-**IcecastMetadataCollector**:
-- `STREAM_URL`: Icecast stream URL
-- `S3_BUCKET`, `KEY_PREFIX`: S3 destination for metadata and history
-- `SECRETS`: Parameter Store path of the Apple Music key (default: `/maxi80/apple-music-key`)
-- `MAX_HISTORY_SIZE`: Maximum number of history entries to keep
+`AWS_REGION` is also honored by the AWS adapters.
 
-### SAM Configuration
+### Secrets in Parameter Store
 
-The deployment configuration is in `samconfig.toml`:
+Secrets live in SSM Parameter Store under `/maxi80/` as `SecureString` values:
 
-```toml
-[dev.deploy.parameters]
-stack_name = "Maxi80Backend-2025"
-region = "eu-central-1"
-profile = "maxi80"
-capabilities = "CAPABILITY_IAM"
-```
+- `/maxi80/api-key` — the API key the authorizer validates
+- `/maxi80/apple-music-key` — the Apple Music private key / Team ID / Key ID (JSON)
 
-## Security Features
+Inspect them with `make get-parameters`.
 
-- **Lambda Authorizer**: All HTTP API endpoints require a valid API key, validated by a dedicated Lambda authorizer
-- **JWT Token Management**: Automatic Apple Music JWT token generation and caching
-- **Secrets Management**: Apple Music credentials and the API key stored as `SecureString` parameters in AWS Systems Manager Parameter Store
-- **IAM Least Privilege**: Each Lambda function has minimal required permissions
-
-## Monitoring and Alerts
-
-The stack includes CloudWatch alarms for:
-
-- **Lambda Errors**: Function execution failures
-- **Lambda Duration**: High execution times (timeout warning)
-- **High Request Count**: HTTP API request count exceeding the configured threshold
-
-Alerts are sent to an SNS topic for notification setup.
-
-## Development
-
-### Adding New Endpoints
-
-1. Add the endpoint path to the `Maxi80Endpoint` enum in `Endpoint.swift`
-2. Implement an `Action` conforming type in `Actions.swift`
-3. Register the action in the `actions` array in `Maxi80Lambda/Lambda.swift`; the `Router` dispatches to it automatically
-
-### Testing Locally
-
-Use the CLI for local testing:
+To seed the Apple Music secret, create `Sources/Maxi80CLI/Secret.swift` (it is
+gitignored — never commit real credentials) defining `Secret.appleMusicSecret`
+(the private key / Team ID / Key ID) and `Secret.name`, then:
 
 ```bash
-swift run Maxi80CLI search "test query"
+swift run Maxi80CLI --profile maxi80 --region eu-central-1 store-secrets
+swift run Maxi80CLI --profile maxi80 --region eu-central-1 get-secrets    # verify
 ```
 
-### Code Style
+## Deploying
 
-The project uses `swift format` for consistent code formatting:
+The deploy stack is `Maxi80Backend-2025` (SAM, `template.yaml`), region **eu-central-1**. All three
+functions are ARM64, `provided.al2023`, `bootstrap` handler. `samconfig.toml` defines two config
+environments: `dev` (local, uses the `maxi80` AWS profile) and `ci` (used by GitHub Actions, no local
+profile — credentials come from the assumed OIDC role).
+
+### Local deploy (`make`)
 
 ```bash
-make format
+make build     # cross-compiles the three Lambda products for al2023 via the
+               # swift-aws-lambda-runtime lambda-build plugin (Apple `container` backend)
+make deploy    # sam deploy --config-env dev --express
 ```
 
-## Dependencies
+`make build` writes zips under `.build/plugins/AWSLambdaBuilder/outputs/…`, which `template.yaml`
+references as its `CodeUri`s.
 
-- **AWS Lambda Runtime**: Swift runtime for AWS Lambda
-- **AWS Lambda Events**: Event types for API Gateway integration
-- **JWT Kit**: JWT token generation for Apple Music API
-- **AWS SDK Swift**: AWS service integrations (Systems Manager Parameter Store, S3)
-- **Async HTTP Client**: HTTP client for Apple Music API calls
-- **Swift Log**: Structured logging
-- **Swift Argument Parser**: CLI argument parsing
+### CI/CD (GitHub Actions + OIDC)
 
-## License
+Every push to `main` (and manual `workflow_dispatch`) runs `.github/workflows/deploy.yml`, which:
 
-[Add your license information here]
+1. Runs `swift test`.
+2. Cross-compiles the three Lambda zips with the `lambda-build` plugin, using the **Docker** backend
+   (`--cross-compile docker`) instead of Apple's `container` CLI, on an arm64 runner.
+3. Assumes a short-lived AWS role via **GitHub OIDC** (no long-lived access keys in the repo).
+4. Runs `sam deploy --config-env ci`.
 
-## Contributing
+**One-time bootstrap:** run the provisioning script with an administrator identity to create the OIDC
+provider and the scoped deploy role, then publish the role ARN as a repo variable:
 
-[Add contribution guidelines here]
+```bash
+AWS_PROFILE=maxi80 GITHUB_REPO=sebsto/maxi80-backend-swift scripts/setup-github-oidc.sh
+# then set the printed ARN as the AWS_DEPLOY_ROLE_ARN repo variable:
+gh variable set AWS_DEPLOY_ROLE_ARN --repo sebsto/maxi80-backend-swift --body "<role-arn>"
+```
+
+The role's trust policy is pinned to this repo on `refs/heads/main`.
+
+## Testing the deployed API
+
+The `Makefile` resolves the live API URL and API key from CloudFormation / Parameter Store:
+
+```bash
+make call-station        # GET /station
+make call-artwork        # GET /artwork?artist=Pink Floyd&title=The Wall
+make call-history        # GET /history
+make call-unauthorized   # same request with a wrong key (should be rejected)
+make get-parameters      # list /maxi80/* parameters (decrypted)
+make stream-metadata     # print the current ICY StreamTitle from the live stream
+```
+
+Tail function logs:
+
+```bash
+make logs-maxi80
+make logs-collector
+make logs-authorizer
+```
+
+## Monitoring
+
+`template.yaml` provisions CloudWatch alarms wired to an SNS topic (`Maxi80-API-Alerts`):
+
+- **Lambda errors** on `Maxi80Lambda`
+- **Lambda high duration** (timeout warning)
+- **HTTP API high request count**
+
+## CLI usage
+
+```bash
+# Search Apple Music
+swift run Maxi80CLI --profile maxi80 --region eu-central-1 search "Pink Floyd"
+
+# Store / retrieve the Apple Music secret in Parameter Store
+swift run Maxi80CLI --profile maxi80 --region eu-central-1 store-secrets
+swift run Maxi80CLI --profile maxi80 --region eu-central-1 get-secrets
+```
+
+## Conventions
+
+- **Swift 6.3, strict concurrency**, warnings-as-errors, and several upcoming-feature flags
+  (`ExistentialAny`, `InternalImportsByDefault`, `MemberImportVisibility`,
+  `NonisolatedNonsendingByDefault`). The code-generated Soto clients use relaxed settings — do not apply
+  the strict flags to them.
+- **Dependency injection via init parameters**, protocol-oriented seams for testability
+  (`S3ManagerProtocol`, `HTTPClientProtocol`, `IcecastReading`, `ArtworkDownloading`, …). Tests inject
+  fakes and never hit AWS.
+- **Swift Testing** (`@Test`, `#expect`, `#require`, `@Suite`) — not XCTest. Property-based tests sit
+  alongside example tests.
+- **swift-log `Logger`** passed through the call chain (never `print` in library/handler code — it must
+  surface in CloudWatch).
+- **Dependencies** are edited directly in `Package.swift`; `Package.resolved` pins the lambda-kit fork
+  commit. Regenerate Soto clients with `scripts/generate-soto-services.sh`; do not hand-edit them.
+- Run `make format` before committing.
+
+## Adding a new endpoint
+
+1. Add an `Action` struct in `Sources/Maxi80Lambda/Actions.swift`.
+2. Register its route in `Maxi80Router.swift`.
+3. Wire its dependencies where the router is constructed in `Sources/Maxi80Lambda/Lambda.swift`.
+
+## Reference docs
+
+- [`CLAUDE.md`](CLAUDE.md) — full architecture, collector pipeline, S3 layout, and conventions.
+- [`README-IcecastMetadataCollector.md`](README-IcecastMetadataCollector.md) — collector operations.
+- `docs/` — design and plan documents.
