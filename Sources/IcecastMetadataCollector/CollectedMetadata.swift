@@ -9,17 +9,17 @@ struct CollectedMetadata: Codable, Sendable {
     let artist: String  // Parsed artist name
     let title: String  // Parsed title
     let collectedAt: String  // ISO 8601 timestamp
-    let color: String?  // Dominant artwork color "#RRGGBB", or nil (omitted from JSON)
+    let colors: ArtworkColors?  // Apple Music artwork palette, or nil (omitted from JSON)
 
-    init(rawMetadata: String, artist: String, title: String, collectedAt: String, color: String? = nil) {
+    init(rawMetadata: String, artist: String, title: String, collectedAt: String, colors: ArtworkColors? = nil) {
         self.rawMetadata = rawMetadata
         self.artist = artist
         self.title = title
         self.collectedAt = collectedAt
-        self.color = color
+        self.colors = colors
     }
 
-    enum CodingKeys: String, CodingKey { case rawMetadata, artist, title, collectedAt, color }
+    enum CodingKeys: String, CodingKey { case rawMetadata, artist, title, collectedAt, colors }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -27,7 +27,7 @@ struct CollectedMetadata: Codable, Sendable {
         artist = try container.decode(String.self, forKey: .artist)
         title = try container.decode(String.self, forKey: .title)
         collectedAt = try container.decode(String.self, forKey: .collectedAt)
-        color = try container.decodeIfPresent(String.self, forKey: .color)
+        colors = try container.decodeIfPresent(ArtworkColors.self, forKey: .colors)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -36,6 +36,6 @@ struct CollectedMetadata: Codable, Sendable {
         try container.encode(artist, forKey: .artist)
         try container.encode(title, forKey: .title)
         try container.encode(collectedAt, forKey: .collectedAt)
-        try container.encodeIfPresent(color, forKey: .color)
+        try container.encodeIfPresent(colors, forKey: .colors)
     }
 }

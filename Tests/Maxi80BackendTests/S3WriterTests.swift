@@ -125,84 +125,108 @@ extension S3WriterTests {
     }
 }
 
-// MARK: - CollectedMetadata color encoding / decoding
+// MARK: - CollectedMetadata colors encoding / decoding
 
 extension S3WriterTests {
 
     private static let testLogger = Logger(label: "s3writer-test")
 
-    @Test("CollectedMetadata with a color round-trips and encodes the hex")
-    func collectedMetadata_withColor_roundTrips() throws {
+    private static let sampleColors = ArtworkColors(
+        bg: "#3D2A1C",
+        text1: "#FFFFFF",
+        text2: "#CCCCCC",
+        text3: "#999999",
+        text4: "#666666"
+    )
+
+    @Test("CollectedMetadata with colors round-trips and encodes the palette")
+    func collectedMetadata_withColors_roundTrips() throws {
         let metadata = CollectedMetadata(
             rawMetadata: "A - B",
             artist: "A",
             title: "B",
             collectedAt: "t",
-            color: "#3D2A1C"
+            colors: Self.sampleColors
         )
 
         let data = try JSONEncoder().encode(metadata)
         let json = try #require(String(data: data, encoding: .utf8))
-        #expect(json.contains("\"color\":\"#3D2A1C\""))
+        #expect(json.contains("\"colors\""))
+        #expect(json.contains("\"bg\":\"#3D2A1C\""))
 
         let decoded = try JSONDecoder().decode(CollectedMetadata.self, from: data)
-        #expect(decoded.color == "#3D2A1C")
+        #expect(decoded.colors == Self.sampleColors)
     }
 
-    @Test("CollectedMetadata without a color omits the key — never null")
-    func collectedMetadata_withoutColor_omitsKey() throws {
+    @Test("CollectedMetadata without colors omits the key — never null")
+    func collectedMetadata_withoutColors_omitsKey() throws {
         let metadata = CollectedMetadata(rawMetadata: "A - B", artist: "A", title: "B", collectedAt: "t")
 
         let data = try JSONEncoder().encode(metadata)
         let json = try #require(String(data: data, encoding: .utf8))
-        #expect(!json.contains("color"))
+        #expect(!json.contains("colors"))
         #expect(!json.contains("null"))
     }
 
-    @Test("Legacy metadata.json without a color key decodes with color == nil")
-    func collectedMetadata_legacy_decodesWithNilColor() throws {
+    @Test("Legacy metadata.json without a colors key decodes with colors == nil")
+    func collectedMetadata_legacy_decodesWithNilColors() throws {
         let legacy = #"{"rawMetadata":"A - B","artist":"A","title":"B","collectedAt":"t"}"#
         let data = try #require(legacy.data(using: .utf8))
 
         let decoded = try JSONDecoder().decode(CollectedMetadata.self, from: data)
-        #expect(decoded.color == nil)
+        #expect(decoded.colors == nil)
     }
 }
 
-// MARK: - S3Writer readMetadata (cache-hit color reuse)
+// MARK: - S3Writer readMetadata (cache-hit colors reuse)
 
 extension S3WriterTests {
 
-    @Test("writeMetadata persists the color into metadata.json")
-    func writeMetadata_persistsColor() async throws {
+    private static let cachedColors = ArtworkColors(
+        bg: "#AABBCC",
+        text1: "#FFFFFF",
+        text2: "#CCCCCC",
+        text3: "#999999",
+        text4: "#666666"
+    )
+
+    @Test("writeMetadata persists the colors palette into metadata.json")
+    func writeMetadata_persistsColors() async throws {
         let mockS3 = MockS3Client()
         let config = S3Config(s3Client: mockS3, bucket: "bucket", keyPrefix: "v2")
         let writer = S3Writer(config: config)
 
+        let paletteColors = ArtworkColors(
+            bg: "#112233",
+            text1: "#FFFFFF",
+            text2: "#CCCCCC",
+            text3: "#999999",
+            text4: "#666666"
+        )
         let metadata = CollectedMetadata(
             rawMetadata: "A - B",
             artist: "A",
             title: "B",
             collectedAt: "t",
-            color: "#112233"
+            colors: paletteColors
         )
         try await writer.writeMetadata(metadata, artist: "A", title: "B", logger: Self.testLogger)
 
         let puts = await mockS3.getPutRecords()
         let metadataPut = try #require(puts.first { $0.key == "v2/A/B/metadata.json" })
         let decoded = try JSONDecoder().decode(CollectedMetadata.self, from: metadataPut.data)
-        #expect(decoded.color == "#112233")
+        #expect(decoded.colors == paletteColors)
     }
 
-    @Test("readMetadata returns the cached color without any Apple Music call")
-    func readMetadata_returnsCachedColor() async throws {
+    @Test("readMetadata returns the cached palette without any Apple Music call")
+    func readMetadata_returnsCachedColors() async throws {
         let mockS3 = MockS3Client()
         let cached = CollectedMetadata(
             rawMetadata: "A - B",
             artist: "A",
             title: "B",
             collectedAt: "t",
-            color: "#AABBCC"
+            colors: Self.cachedColors
         )
         await mockS3.setGetObjectResult(try JSONEncoder().encode(cached))
 
@@ -210,7 +234,7 @@ extension S3WriterTests {
         let writer = S3Writer(config: config)
 
         let result = try await writer.readMetadata(artist: "A", title: "B")
-        #expect(result?.color == "#AABBCC")
+        #expect(result?.colors == Self.cachedColors)
     }
 
     @Test("readMetadata returns nil when metadata.json is absent")

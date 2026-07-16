@@ -12,17 +12,17 @@ struct HistoryEntry: Codable, Sendable, Equatable {
     let title: String
     let artwork: String  // Full S3 key, e.g. "collected/ArtistName/SongTitle/artwork.jpg"
     let timestamp: String  // ISO 8601 UTC, e.g. "2025-01-15T14:30:00Z"
-    let color: String?  // Dominant artwork color as "#RRGGBB" uppercase, or nil (omitted from JSON)
+    let colors: ArtworkColors?  // Apple Music artwork palette, or nil (omitted from JSON)
 
-    init(artist: String, title: String, artwork: String, timestamp: String, color: String? = nil) {
+    init(artist: String, title: String, artwork: String, timestamp: String, colors: ArtworkColors? = nil) {
         self.artist = artist
         self.title = title
         self.artwork = artwork
         self.timestamp = timestamp
-        self.color = color
+        self.colors = colors
     }
 
-    enum CodingKeys: String, CodingKey { case artist, title, artwork, timestamp, color }
+    enum CodingKeys: String, CodingKey { case artist, title, artwork, timestamp, colors }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -30,7 +30,7 @@ struct HistoryEntry: Codable, Sendable, Equatable {
         title = try container.decode(String.self, forKey: .title)
         artwork = try container.decode(String.self, forKey: .artwork)
         timestamp = try container.decode(String.self, forKey: .timestamp)
-        color = try container.decodeIfPresent(String.self, forKey: .color)
+        colors = try container.decodeIfPresent(ArtworkColors.self, forKey: .colors)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -39,7 +39,7 @@ struct HistoryEntry: Codable, Sendable, Equatable {
         try container.encode(title, forKey: .title)
         try container.encode(artwork, forKey: .artwork)
         try container.encode(timestamp, forKey: .timestamp)
-        try container.encodeIfPresent(color, forKey: .color)
+        try container.encodeIfPresent(colors, forKey: .colors)
     }
 }
 
@@ -92,7 +92,7 @@ struct HistoryManager {
         title: String,
         artworkKey: String,
         timestamp: String,
-        color: String? = nil,
+        colors: ArtworkColors? = nil,
         logger: Logger
     ) async {
         var history: HistoryFile
@@ -111,7 +111,13 @@ struct HistoryManager {
             return
         }
 
-        let entry = HistoryEntry(artist: artist, title: title, artwork: artworkKey, timestamp: timestamp, color: color)
+        let entry = HistoryEntry(
+            artist: artist,
+            title: title,
+            artwork: artworkKey,
+            timestamp: timestamp,
+            colors: colors
+        )
         let updated = Self.appendAndTrim(entry: entry, to: history, maxSize: maxHistorySize)
 
         do {

@@ -39,11 +39,11 @@ struct MetadataCollector {
     }
 
     /// What to write to history for this invocation: the artwork file name (`artwork.jpg` or
-    /// `nocover.jpg`) and the optional dominant color. `nil` from `enrich` means "dedup skip —
+    /// `nocover.jpg`) and the optional palette. `nil` from `enrich` means "dedup skip —
     /// record nothing".
     private struct HistoryOutcome {
         let file: String
-        let color: String?
+        let colors: ArtworkColors?
     }
 
     /// Runs one collection cycle: read the stream, parse, then enrich (dedup / cache / migrate /
@@ -86,7 +86,7 @@ struct MetadataCollector {
             logger.error(
                 "Enrichment failed for \(artist) - \(title), recording without cover: \(type(of: error)): \(error)"
             )
-            outcome = HistoryOutcome(file: "nocover.jpg", color: nil)
+            outcome = HistoryOutcome(file: "nocover.jpg", colors: nil)
         }
 
         guard let outcome else {
@@ -94,7 +94,7 @@ struct MetadataCollector {
             return
         }
 
-        await recordHistory(artist: artist, title: title, file: outcome.file, color: outcome.color, logger: logger)
+        await recordHistory(artist: artist, title: title, file: outcome.file, colors: outcome.colors, logger: logger)
         logger.info("Successfully collected metadata for \(artist) - \(title) [\(outcome.file)]")
     }
 
@@ -127,49 +127,17 @@ struct MetadataCollector {
         let normalizedArtist = artist.lowercased().trimmingWhitespace()
         if normalizedArtist == "maxi80" || normalizedArtist == "maxi 80" {
             logger.debug("Path: Maxi 80 filler → recording nocover, skipping Apple Music search")
-            return HistoryOutcome(file: "nocover.jpg", color: nil)
+            return HistoryOutcome(file: "nocover.jpg", colors: nil)
         }
 
-        // Step 3: Check S3 cache — if already collected, reuse the cached metadata (including
-        // the dominant color) instead of calling Apple Music again.
+        // Step 3: Check S3 cache — if already collected, reuse the cached palette instead of
+        // calling Apple Music again. (The one-off scripts/backfill-colors.sh converts any objects
+        // collected before the palette schema, so there is no lazy per-request backfill here.)
         logger.debug("Path: checking S3 cache for \(artist)/\(title)")
         if let cached = try await s3Writer.readMetadata(artist: artist, title: title) {
             logger.info("Cache hit for \(artist)/\(title), skipping collection")
-
-            // Backfill: legacy entries (collected before the color feature) have no color.
-            // Do a one-time Apple Music search to fetch it and rewrite metadata.json so
-            // future cache hits are free. A failed lookup records without color, never aborts.
-            var color = cached.color
-            if color == nil {
-                logger.debug("Path: cache hit, color absent → attempting backfill")
-                do {
-                    if let song = try await searchAppleMusic(artist: artist, title: title, logger: logger).song,
-                        let backfilled = dominantColor(for: song)
-                    {
-                        color = backfilled
-                        let updated = CollectedMetadata(
-                            rawMetadata: cached.rawMetadata,
-                            artist: cached.artist,
-                            title: cached.title,
-                            collectedAt: cached.collectedAt,
-                            color: backfilled
-                        )
-                        try await s3Writer.writeMetadata(updated, artist: artist, title: title, logger: logger)
-                        logger.info("Backfilled color \(backfilled) for cached \(artist) - \(title)")
-                    } else {
-                        logger.debug("Path: backfill found no song/color")
-                    }
-                } catch {
-                    logger.warning(
-                        "Color backfill failed on cache hit for \(artist) - \(title), recording without color: \(error)"
-                    )
-                }
-            } else {
-                logger.debug("Path: cache hit, color already present")
-            }
-
             logger.debug("Path: cache hit → recording artwork")
-            return HistoryOutcome(file: "artwork.jpg", color: color)
+            return HistoryOutcome(file: "artwork.jpg", colors: cached.colors)
         }
 
         // Step 3b: Migrate legacy cache. Titles used to be stored with trailing parentheses
@@ -206,7 +174,7 @@ struct MetadataCollector {
                         artist: legacy.artist,
                         title: title,
                         collectedAt: legacy.collectedAt,
-                        color: legacy.color
+                        colors: legacy.colors
                     )
                     try await s3Writer.writeMetadata(migrated, artist: artist, title: title, logger: logger)
                     logger.debug("Path: migration rewrote metadata.json under full title")
@@ -220,7 +188,7 @@ struct MetadataCollector {
                     }
 
                     logger.debug("Path: migration complete → recording artwork")
-                    return HistoryOutcome(file: "artwork.jpg", color: legacy.color)
+                    return HistoryOutcome(file: "artwork.jpg", colors: legacy.colors)
                 }
             } catch {
                 logger.warning("Legacy-title migration failed for \(artist) - \(title), collecting fresh: \(error)")
@@ -235,7 +203,7 @@ struct MetadataCollector {
         guard let song = bestMatch else {
             logger.warning("No search results for \(artist) - \(title), skipping")
             logger.debug("Path: no search results → recording nocover")
-            return HistoryOutcome(file: "nocover.jpg", color: nil)
+            return HistoryOutcome(file: "nocover.jpg", colors: nil)
         }
         logger.info("Selected song: \(song.attributes.name) by \(song.attributes.artistName ?? "Unknown")")
 
@@ -256,9 +224,9 @@ struct MetadataCollector {
             logger.warning("No artwork available for \(artist) - \(title)")
         }
 
-        // Derive the dominant color from Apple's bgColor and cache it in metadata.json,
-        // so future cache hits can reuse it without calling Apple Music again.
-        let artworkColor = dominantColor(for: song)
+        // Capture Apple's full artwork palette and cache it in metadata.json so future cache hits
+        // reuse it without calling Apple Music again. The client picks the display color.
+        let colors = artworkColors(for: song)
 
         // Step 7: Upload all three files to S3
         let collectedMetadata = CollectedMetadata(
@@ -266,7 +234,7 @@ struct MetadataCollector {
             artist: artist,
             title: title,
             collectedAt: Date.now.formatted(.iso8601),
-            color: artworkColor
+            colors: colors
         )
 
         try await s3Writer.writeMetadata(collectedMetadata, artist: artist, title: title, logger: logger)
@@ -277,20 +245,27 @@ struct MetadataCollector {
 
         let file = artworkData != nil ? "artwork.jpg" : "nocover.jpg"
         logger.debug("Path: fresh collection complete → recording \(file)")
-        return HistoryOutcome(file: file, color: artworkColor)
+        return HistoryOutcome(file: file, colors: colors)
     }
 
-    private func recordHistory(artist: String, title: String, file: String, color: String? = nil, logger: Logger) async
+    private func recordHistory(
+        artist: String,
+        title: String,
+        file: String,
+        colors: ArtworkColors? = nil,
+        logger: Logger
+    )
+        async
     {
         let artworkKey = buildS3Key(prefix: s3Writer.config.keyPrefix, artist: artist, title: title, file: file)
         let timestamp = Date.now.formatted(.iso8601)
-        logger.debug("recordHistory: artist=\(artist), title=\(title), file=\(file), color=\(color ?? "nil")")
+        logger.debug("recordHistory: artist=\(artist), title=\(title), file=\(file), colors=\(colors != nil)")
         await historyManager.recordEntry(
             artist: artist,
             title: title,
             artworkKey: artworkKey,
             timestamp: timestamp,
-            color: color,
+            colors: colors,
             logger: logger
         )
     }
@@ -319,8 +294,8 @@ struct MetadataCollector {
         return (searchData, selectBestMatch(searchResponse))
     }
 
-    /// Derives the dominant artwork color ("#RRGGBB") from Apple's bgColor, or nil when unavailable.
-    private func dominantColor(for song: Song) -> String? {
-        song.attributes.artwork.flatMap { DominantColor().normalizedHex(fromAppleBgColor: $0.bgColor) }
+    /// The Apple Music artwork palette to store, or nil when no artwork/valid colors are available.
+    private func artworkColors(for song: Song) -> ArtworkColors? {
+        song.attributes.artwork.flatMap { ArtworkColors(artwork: $0) }
     }
 }
