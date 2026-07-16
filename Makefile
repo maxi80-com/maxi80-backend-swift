@@ -15,7 +15,7 @@ test:
 	swift test
 
 deploy:
-	sam deploy --config-env dev
+	sam deploy --config-env dev --express
 
 # Get the HTTP API URL and API key from AWS
 API_GATEWAY_URL = $(shell aws cloudformation describe-stacks --stack-name $(SAM_STACK_NAME) --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text 2>/dev/null)
