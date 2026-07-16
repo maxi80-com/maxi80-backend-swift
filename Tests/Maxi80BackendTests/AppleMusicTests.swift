@@ -95,6 +95,27 @@ struct AppleMusicTests {
         #expect(decodedSecret.keyId == secret.keyId)
     }
 
+    @Test("AppleMusicSecret decodes from key-file JSON")
+    func testAppleMusicSecretKeyFileDecoding() throws {
+        // Given
+        let keyFileJSON = """
+            {
+                "keyId": "FAKEKEYID1",
+                "privateKey": "-----BEGIN PRIVATE KEY-----\\nFAKEKEYCONTENT\\n-----END PRIVATE KEY-----",
+                "teamId": "FAKETEAM01"
+            }
+            """
+
+        // When
+        let data = Data(keyFileJSON.utf8)
+        let secret = try JSONDecoder().decode(AppleMusicSecret.self, from: data)
+
+        // Then
+        #expect(secret.keyId == "FAKEKEYID1")
+        #expect(secret.teamId == "FAKETEAM01")
+        #expect(secret.privateKey == "-----BEGIN PRIVATE KEY-----\nFAKEKEYCONTENT\n-----END PRIVATE KEY-----")
+    }
+
     @Test("AppleMusicSecret description hides private key")
     func testAppleMusicSecretDescription() {
         // Given
