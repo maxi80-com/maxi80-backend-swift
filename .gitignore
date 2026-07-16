@@ -14,3 +14,5 @@ Secret.swift
 .aws-sam
 data/search_results
 data/apple_music_results
+# Local git worktrees for subagent-driven development
+.worktrees/
