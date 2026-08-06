@@ -13,11 +13,10 @@ on:
 # One in-flight deploy at a time; a newer push supersedes an older queued run
 # but never cancels a deploy already talking to CloudFormation.
 concurrency:
-  group: deploy-main
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
-  id-token: write # required to request the OIDC token for AWS
   contents: read
 
 env:
@@ -26,10 +25,10 @@ env:
   SWIFT_AL2023_IMAGE: swift:amazonlinux2023
 
 jobs:
-  deploy:
-    name: Build, test and deploy
+  build_test:
+    name: Build and test
     # arm64 runner: the Lambdas are arm64 (template.yaml Architectures: arm64), so we
-    # cross-compile inside an arm64 container natively — no QEMU emulation.
+    # keep CI architecture aligned and avoid QEMU emulation.
     runs-on: ubuntu-24.04-arm
 
     steps:
@@ -37,8 +36,7 @@ jobs:
         uses: actions/checkout@v4
 
       # No Swift install step: the ubuntu-24.04-arm runner image ships Swift 6.3.3
-      # (matches this package's swift-tools-version: 6.3). The Lambda artifacts are
-      # built separately inside the amazonlinux2023 container by the plugin below.
+      # (matches this package's swift-tools-version: 6.3).
       - name: Show Swift version
         run: swift --version
 
@@ -55,8 +53,38 @@ jobs:
           restore-keys: |
             swiftpm-${{ runner.os }}-${{ runner.arch }}-
 
+      - name: Build
+        run: swift build
+
       - name: Test
         run: swift test
+
+  deploy:
+    name: Build artifacts and deploy
+    needs: build_test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      id-token: write # required to request the OIDC token for AWS
+      contents: read
+    # arm64 runner: the Lambdas are arm64 (template.yaml Architectures: arm64), so we
+    # cross-compile inside an arm64 container natively — no QEMU emulation.
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The artifact build recompiles with the lambda-build plugin and benefits from
+      # restoring the same SwiftPM cache key as the build_test job.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            swiftpm-${{ runner.os }}-${{ runner.arch }}-
 
       # Pre-pull the Swift AL2023 image so the plugin does not, and cache it in the
       # Docker layer cache across runs to shave cold-start time off the build.
