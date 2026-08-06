@@ -76,6 +76,12 @@ Resources:
                S3_BUCKET: !Ref MetadataBucket
                KEY_PREFIX: v2
                URL_EXPIRATION: "3600"
+               # Runtime feature flags served in the /station response, as a comma-separated list
+               # of name=bool pairs (lower_snake_case names, true/false or 1/0). An empty string
+               # means no `features` key in the payload — the pre-flags behaviour older app
+               # versions expect. Edit here + `make deploy`, or flip immediately with
+               # `make set-feature-flags FLAGS="anniversary_cover=false"`.
+               FEATURE_FLAGS: "anniversary_cover=true"
          MemorySize: 128
          CodeUri: .build/plugins/AWSLambdaBuilder/outputs/AWSLambdaBuilder/Maxi80Lambda/Maxi80Lambda.zip
          Policies:

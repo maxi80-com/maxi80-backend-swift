@@ -61,5 +61,23 @@ logs-collector:
 logs-authorizer:
 	sam logs --stack-name $(SAM_STACK_NAME) --name AuthorizerLambda --region $(AWS_REGION) --profile $(AWS_PROFILE) --tail
 
+# Feature flags served in the /station response. FEATURE_FLAGS is a Lambda environment
+# variable, so flipping a flag takes effect on the next invocation with no rebuild or
+# CloudFormation deploy. Remember to mirror the value in template.yaml, otherwise the next
+# `make deploy` resets it.
+MAXI80_FUNCTION = $(shell aws cloudformation describe-stack-resource --stack-name $(SAM_STACK_NAME) --logical-resource-id Maxi80Lambda --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'StackResourceDetail.PhysicalResourceId' --output text 2>/dev/null)
+
+get-feature-flags:
+	@aws lambda get-function-configuration --function-name $(MAXI80_FUNCTION) --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Environment.Variables.FEATURE_FLAGS' --output text
+
+# Usage: make set-feature-flags FLAGS="anniversary_cover=true,sleep_timer=false"
+# Pass FLAGS="" to stop sending the `features` object entirely.
+set-feature-flags:
+	@aws lambda update-function-configuration \
+	  --function-name $(MAXI80_FUNCTION) \
+	  --region $(AWS_REGION) --profile $(AWS_PROFILE) \
+	  --environment "Variables={$(shell aws lambda get-function-configuration --function-name $(MAXI80_FUNCTION) --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Environment.Variables' --output json | python3 -c 'import json,sys; v=json.load(sys.stdin); v["FEATURE_FLAGS"]="$(FLAGS)"; print(",".join(f"{k}={x}" for k,x in v.items()))')}" \
+	  --query 'Environment.Variables.FEATURE_FLAGS' --output text
+
 get-parameters:
 	@aws ssm get-parameters-by-path --path /maxi80/ --with-decryption --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Parameters[*].[Name,Value]'

@@ -16,9 +16,12 @@ struct Maxi80RouterTests {
 
     private let logger = Logger(label: "test")
 
-    private func makeRouter(s3: MockS3Client = MockS3Client()) -> Maxi80Router {
+    private func makeRouter(
+        s3: MockS3Client = MockS3Client(),
+        featureFlags: FeatureFlags = .none
+    ) -> Maxi80Router {
         Maxi80Router(
-            station: StationAction(),
+            station: StationAction(featureFlags: featureFlags),
             artwork: ArtworkAction(
                 s3Client: s3,
                 bucket: "test-bucket",
@@ -38,6 +41,29 @@ struct Maxi80RouterTests {
         let body = try #require(response.body)
         let station = try JSONDecoder().decode(Station.self, from: Data(body.utf8))
         #expect(station.name == "Maxi 80")
+    }
+
+    @Test("GET /station includes the features object when flags are configured")
+    func stationRouteWithFeatureFlags() async throws {
+        let router = makeRouter(featureFlags: FeatureFlags(environmentValue: "anniversary_cover=true"))
+        let request = try TestHelpers.createHTTPRequest(path: "/station")
+        let response = await router.handle(request, logger: logger)
+
+        #expect(response.statusCode == .ok)
+        let body = try #require(response.body)
+        let json = try #require(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        #expect(json["features"] as? [String: Bool] == ["anniversary_cover": true])
+    }
+
+    @Test("GET /station omits the features key for an older client when no flags are configured")
+    func stationRouteWithoutFeatureFlags() async throws {
+        let request = try TestHelpers.createHTTPRequest(path: "/station")
+        let response = await makeRouter().handle(request, logger: logger)
+
+        let body = try #require(response.body)
+        #expect(!body.contains("features"))
+        let station = try JSONDecoder().decode(Station.self, from: Data(body.utf8))
+        #expect(station.features == nil)
     }
 
     @Test("GET /artwork with both parameters returns 200 with a presigned URL")

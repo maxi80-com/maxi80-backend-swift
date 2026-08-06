@@ -92,12 +92,24 @@ dependencies.
 
 ### HTTP API endpoints (`Maxi80Lambda`)
 
-- `GET /station` — returns the hardcoded `Station.default` (station name, stream URL, descriptions).
+- `GET /station` — returns the hardcoded `Station.default` (station name, stream URL, descriptions)
+  plus an **optional** `features` object of runtime feature flags (see below).
 - `GET /artwork?artist=&title=` — HEADs `v2/<artist>/<title>/artwork.jpg`; returns a **pre-signed
   GET URL** if present, else `204 No Content`.
 - `GET /history` — streams `v2/history.json` back verbatim; `{"entries":[]}` if absent.
 
 All three are behind the Lambda authorizer; missing query params throw `QueryParameterError` → 400.
+
+**Feature flags (`/station` `features`):** `FeatureFlags` (in `Maxi80Backend`) parses the
+`FEATURE_FLAGS` env var — comma-separated `name=bool` pairs — and `Maxi80Lambda`'s init injects it
+into `StationAction`. The client contract is `features: [String: Bool]?`, and its **omitted-when-empty
+serialization is load-bearing**: pre-flags app versions decode `Station` without the field, so with no
+flags configured the encoded JSON must contain no `features` key at all — not `{}`, not `null`.
+`Station.init` collapses an empty dictionary to `nil` to enforce that, and tests assert the encoded
+string does not contain `"features"`. Flag names are `lower_snake_case`, passed through verbatim (no
+allow-list, so the backend can lead or lag the client). Malformed entries are dropped and logged, never
+thrown — a typo in the env var must not take `/station` down. Operators flip a flag with
+`make set-feature-flags FLAGS="…"` (immediate) and mirror it into `template.yaml` (durable).
 
 ### Collector pipeline (`IcecastMetadataCollector`)
 
@@ -154,7 +166,7 @@ v2/
   branch so a missing-track incident is diagnosable from logs alone.
 - **AWS access** goes through the adapters in `Maxi80Backend/AWS/`, using the shared `AWSClient`.
   Environment overrides: `AWS_REGION`, `S3_BUCKET`, `KEY_PREFIX`, `MAX_HISTORY_SIZE`, `STREAM_URL`,
-  `URL_EXPIRATION`, `API_KEY_PARAMETER`, `SECRETS`.
+  `URL_EXPIRATION`, `API_KEY_PARAMETER`, `SECRETS`, `FEATURE_FLAGS`.
 - **Dependencies** are edited directly in `Package.swift`; `Package.resolved` pins the lambda-kit
   fork commit. Regenerate Soto clients with `scripts/generate-soto-services.sh`, don't hand-edit them.
 - Run `make format` before committing.
