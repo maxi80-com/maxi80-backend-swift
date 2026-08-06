@@ -54,7 +54,7 @@ public struct Station: Codable, Sendable {
     )
 
     /// Returns a copy carrying the given runtime flags. With no flags configured the payload is
-    /// unchanged — `features` key included.
+    /// unchanged — `features` key omitted entirely, which is what pre-flags app versions expect.
     public func withFeatures(_ flags: FeatureFlags) -> Station {
         Station(
             name: name,

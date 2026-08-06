@@ -72,11 +72,25 @@ get-feature-flags:
 
 # Usage: make set-feature-flags FLAGS="anniversary_cover=true,sleep_timer=false"
 # Pass FLAGS="" to stop sending the `features` object entirely.
+#
+# The merged environment goes over as JSON, not the `Variables={k=v,...}` shorthand: a flag list
+# contains commas and `=`, which the shorthand parser would split into further variables (so
+# `FEATURE_FLAGS=a=true,b=false` would land as FEATURE_FLAGS=a=true plus a bogus `b` variable).
+# FLAGS reaches python through the environment rather than being interpolated into its source, so
+# it can't inject code. update-function-configuration replaces the whole environment, hence the
+# read-merge-write.
 set-feature-flags:
-	@aws lambda update-function-configuration \
-	  --function-name $(MAXI80_FUNCTION) \
+	@set -eu; \
+	fn="$(MAXI80_FUNCTION)"; \
+	[ -n "$$fn" ] || { echo "Could not resolve Maxi80Lambda in stack $(SAM_STACK_NAME)" >&2; exit 1; }; \
+	env_json=$$(aws lambda get-function-configuration --function-name "$$fn" \
 	  --region $(AWS_REGION) --profile $(AWS_PROFILE) \
-	  --environment "Variables={$(shell aws lambda get-function-configuration --function-name $(MAXI80_FUNCTION) --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Environment.Variables' --output json | python3 -c 'import json,sys; v=json.load(sys.stdin); v["FEATURE_FLAGS"]="$(FLAGS)"; print(",".join(f"{k}={x}" for k,x in v.items()))')}" \
+	  --query 'Environment.Variables' --output json); \
+	new_env=$$(printf '%s' "$$env_json" | FEATURE_FLAGS='$(FLAGS)' python3 -c 'import json, os, sys; v = json.load(sys.stdin) or {}; v["FEATURE_FLAGS"] = os.environ["FEATURE_FLAGS"]; json.dump({"Variables": v}, sys.stdout)'); \
+	aws lambda update-function-configuration \
+	  --function-name "$$fn" \
+	  --region $(AWS_REGION) --profile $(AWS_PROFILE) \
+	  --environment "$$new_env" \
 	  --query 'Environment.Variables.FEATURE_FLAGS' --output text
 
 get-parameters:
