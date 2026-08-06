@@ -80,7 +80,7 @@ All endpoints require an `Authorization` header carrying the API key, validated 
 
 ### `GET /station`
 
-Returns the station information (`Station.default`):
+Returns the station information (`Station.default`) plus the configured runtime feature flags:
 
 ```json
 {
@@ -91,9 +91,18 @@ Returns the station information (`Station.default`):
   "longDesc": "Le meilleur de la musique des années 80",
   "websiteUrl": "https://maxi80.com",
   "donationUrl": "https://www.maxi80.com/paypal.htm",
-  "defaultCoverUrl": "file://maxi80_nocover-b.png"
+  "defaultCoverUrl": "file://maxi80_nocover-b.png",
+  "features": {
+    "anniversary_cover": true
+  }
 }
 ```
+
+`features` is an **optional** `[String: Bool]` object of `lower_snake_case` flag names. When no flags
+are configured the key is **absent entirely** (never `{}`, never `null`), so app versions released
+before feature flags existed see exactly the payload they shipped against. Clients ignore flag names
+they do not know, and fall back to their compiled-in defaults when `features` is missing. See
+[Feature flags](#feature-flags) for how to flip one.
 
 ### `GET /artwork?artist={artist}&title={title}`
 
@@ -145,6 +154,7 @@ Runtime configuration is passed to the functions as environment variables (defau
 - `S3_BUCKET` — bucket holding collected artwork and history
 - `KEY_PREFIX` — key prefix within the bucket (`v2`)
 - `URL_EXPIRATION` — pre-signed URL lifetime in seconds (`3600`)
+- `FEATURE_FLAGS` — runtime feature flags served in `/station` (`anniversary_cover=true`)
 
 **AuthorizerLambda**
 - `API_KEY_PARAMETER` — Parameter Store path of the API key (`/maxi80/api-key`)
@@ -156,6 +166,44 @@ Runtime configuration is passed to the functions as environment variables (defau
 - `MAX_HISTORY_SIZE` — maximum number of history entries to keep (`100`)
 
 `AWS_REGION` is also honored by the AWS adapters.
+
+### Feature flags
+
+The mobile apps read runtime toggles from the `features` object of `GET /station`, so a feature can be
+switched on or off without an app-store release. Flags are ordinary configuration (not secrets), so
+they live in the `FEATURE_FLAGS` environment variable of `Maxi80Lambda` — a comma-separated list of
+`name=bool` pairs:
+
+```
+FEATURE_FLAGS="anniversary_cover=true,sleep_timer=false"
+```
+
+- Names are `lower_snake_case` and passed through verbatim — the backend keeps no list of known
+  flags, so a flag can be configured before or after the client that reads it ships.
+- Values accept `true`/`false` or `1`/`0`, case-insensitively, with surrounding whitespace tolerated.
+- An unset or empty value means **no `features` key at all** in the response.
+- A malformed entry is skipped (logged as a warning) rather than failing the endpoint — a typo must
+  never take `/station` down.
+
+Two ways to flip a flag:
+
+```bash
+# Immediate, no rebuild or CloudFormation deploy — takes effect on the next invocation.
+make set-feature-flags FLAGS="anniversary_cover=false"
+make get-feature-flags                  # read the live value
+
+# Durable: edit FEATURE_FLAGS in template.yaml, then
+make deploy
+```
+
+Use the `make` route for a time-boxed change (e.g. the anniversary window), but mirror the value into
+`template.yaml` — otherwise the next `make deploy` resets it to the template's value.
+
+Current flags:
+
+| Flag | Value | Gates |
+|------|-------|-------|
+| `anniversary_cover` | `true` | 25th-anniversary placeholder album cover in the app |
 
 ### Secrets in Parameter Store
 

@@ -61,5 +61,37 @@ logs-collector:
 logs-authorizer:
 	sam logs --stack-name $(SAM_STACK_NAME) --name AuthorizerLambda --region $(AWS_REGION) --profile $(AWS_PROFILE) --tail
 
+# Feature flags served in the /station response. FEATURE_FLAGS is a Lambda environment
+# variable, so flipping a flag takes effect on the next invocation with no rebuild or
+# CloudFormation deploy. Remember to mirror the value in template.yaml, otherwise the next
+# `make deploy` resets it.
+MAXI80_FUNCTION = $(shell aws cloudformation describe-stack-resource --stack-name $(SAM_STACK_NAME) --logical-resource-id Maxi80Lambda --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'StackResourceDetail.PhysicalResourceId' --output text 2>/dev/null)
+
+get-feature-flags:
+	@aws lambda get-function-configuration --function-name $(MAXI80_FUNCTION) --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Environment.Variables.FEATURE_FLAGS' --output text
+
+# Usage: make set-feature-flags FLAGS="anniversary_cover=true,sleep_timer=false"
+# Pass FLAGS="" to stop sending the `features` object entirely.
+#
+# The merged environment goes over as JSON, not the `Variables={k=v,...}` shorthand: a flag list
+# contains commas and `=`, which the shorthand parser would split into further variables (so
+# `FEATURE_FLAGS=a=true,b=false` would land as FEATURE_FLAGS=a=true plus a bogus `b` variable).
+# FLAGS reaches python through the environment rather than being interpolated into its source, so
+# it can't inject code. update-function-configuration replaces the whole environment, hence the
+# read-merge-write.
+set-feature-flags:
+	@set -eu; \
+	fn="$(MAXI80_FUNCTION)"; \
+	[ -n "$$fn" ] || { echo "Could not resolve Maxi80Lambda in stack $(SAM_STACK_NAME)" >&2; exit 1; }; \
+	env_json=$$(aws lambda get-function-configuration --function-name "$$fn" \
+	  --region $(AWS_REGION) --profile $(AWS_PROFILE) \
+	  --query 'Environment.Variables' --output json); \
+	new_env=$$(printf '%s' "$$env_json" | FEATURE_FLAGS='$(FLAGS)' python3 -c 'import json, os, sys; v = json.load(sys.stdin) or {}; v["FEATURE_FLAGS"] = os.environ["FEATURE_FLAGS"]; json.dump({"Variables": v}, sys.stdout)'); \
+	aws lambda update-function-configuration \
+	  --function-name "$$fn" \
+	  --region $(AWS_REGION) --profile $(AWS_PROFILE) \
+	  --environment "$$new_env" \
+	  --query 'Environment.Variables.FEATURE_FLAGS' --output text
+
 get-parameters:
 	@aws ssm get-parameters-by-path --path /maxi80/ --with-decryption --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Parameters[*].[Name,Value]'

@@ -31,6 +31,43 @@ struct LambdaHandlerTests {
         #expect(station.streamUrl == "https://audio1.maxi80.com")
     }
 
+    @Test("Station action serves configured feature flags in the features object")
+    func testStationActionWithFeatureFlags() async throws {
+        let action = StationAction(
+            featureFlags: FeatureFlags(environmentValue: "anniversary_cover=true,sleep_timer=false")
+        )
+
+        let response = try await action.handle(
+            TestHelpers.createHTTPRequest(path: "/station"),
+            Logger(label: "test")
+        )
+
+        #expect(response.statusCode == .ok)
+        let body = try TestHelpers.body(of: response)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["features"] as? [String: Bool] == ["anniversary_cover": true, "sleep_timer": false])
+        // Existing fields survive the addition.
+        #expect(json["name"] as? String == "Maxi 80")
+
+        let station = try JSONDecoder().decode(Station.self, from: body)
+        #expect(station.features?["anniversary_cover"] == true)
+    }
+
+    @Test("Station action omits the features key when no flags are configured")
+    func testStationActionWithoutFeatureFlags() async throws {
+        let response = try await StationAction().handle(
+            TestHelpers.createHTTPRequest(path: "/station"),
+            Logger(label: "test")
+        )
+
+        let body = try TestHelpers.body(of: response)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+        // Older app versions must see the exact payload they shipped against.
+        #expect(json.keys.contains("features") == false)
+        #expect(!String(decoding: body, as: UTF8.self).contains("features"))
+    }
+
     @Test("History action returns empty entries when no history file exists")
     func testHistoryActionEmpty() async throws {
         let mockS3 = MockS3Client()

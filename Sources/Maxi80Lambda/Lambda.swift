@@ -51,7 +51,18 @@ struct Maxi80Lambda: LambdaHandler {
                 resolvedS3Client = S3Manager(client: awsClient, region: bucketRegion)
             }
 
-            let station = StationAction()
+            // Runtime feature flags for the client, e.g. FEATURE_FLAGS="anniversary_cover=true".
+            // Unset/empty means no `features` key in the /station payload.
+            let featureFlags = FeatureFlags(environmentValue: Lambda.env(FeatureFlags.environmentKey))
+            if !featureFlags.malformedEntries.isEmpty {
+                logger.warning(
+                    "Ignoring malformed \(FeatureFlags.environmentKey) entries",
+                    metadata: ["entries": .string(featureFlags.malformedEntries.joined(separator: ", "))]
+                )
+            }
+            logger.info("Feature flags: \(featureFlags.values)")
+
+            let station = StationAction(featureFlags: featureFlags)
             let artwork = ArtworkAction(
                 s3Client: resolvedS3Client,
                 bucket: bucket,

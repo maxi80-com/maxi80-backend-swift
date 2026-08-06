@@ -18,12 +18,20 @@ public protocol Action: Sendable {
 }
 
 /// Handles station information requests.
+///
+/// The response is `Station.default` plus whatever runtime feature flags the function was
+/// configured with. With no flags configured the payload is byte-for-byte the pre-flags one (no
+/// `features` key), which is what older app versions expect.
 public struct StationAction: Action {
-    public init() {}
+    private let station: Station
+
+    public init(featureFlags: FeatureFlags = .none) {
+        self.station = Station.default.withFeatures(featureFlags)
+    }
 
     public func handle(_ request: Routing.HTTPRequest, _ logger: Logger) async throws -> RouteResponse {
         logger.debug("Handling station request")
-        return .json(Station.default, statusCode: .ok)
+        return .json(station, statusCode: .ok)
     }
 }
 
