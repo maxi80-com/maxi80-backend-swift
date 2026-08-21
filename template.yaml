@@ -33,6 +33,17 @@ Resources:
                   Identity:
                      Headers:
                         - Authorization
+                     # Cache authorizer decisions for an hour, keyed on the Authorization header.
+                     # SAM defaults this to 0 (no caching), which made API Gateway invoke the
+                     # authorizer on EVERY request (~15k/day) and cold-start it ~3k times/day. Each
+                     # cold start runs `init()`, which reads /maxi80/api-key as a SecureString and
+                     # so pays one SSM GetParameter + one KMS Decrypt. All clients send the same
+                     # shared key, so a single cache entry serves the whole fleet.
+                     #
+                     # Tradeoff: changing /maxi80/api-key takes up to an hour to be enforced. That
+                     # is immaterial here — the key ships inside the iOS app, so rotating it is
+                     # already an app-release event, not a runtime operation.
+                     ReauthorizeEvery: 3600
                   AuthorizerPayloadFormatVersion: "2.0"
                   EnableSimpleResponses: true
 
