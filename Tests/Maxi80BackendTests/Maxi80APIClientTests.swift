@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
+@testable import Maxi80Backend
+
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-
-@testable import Maxi80Backend
 
 class MockURLSession: URLSessionProtocol {
     var mockData: Data?
