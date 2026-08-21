@@ -73,6 +73,18 @@ get-feature-flags:
 # Usage: make set-feature-flags FLAGS="anniversary_cover=true,sleep_timer=false"
 # Pass FLAGS="" to stop sending the `features` object entirely.
 #
+# FLAGS is mandatory: running the target without it would silently clear every flag, so that case
+# fails and prints the live flags back as a command line to edit and re-run. `$(origin FLAGS)` is
+# what tells "forgot the argument" apart from an explicit `FLAGS=""`, which is the documented way to
+# clear everything and stays unattended.
+#
+# The usage message also lists the flag names the client understands, read out of the client repo's
+# `FeatureFlags.Flag` enum rather than duplicated here, so the two can't drift. The client lives in a
+# separate checkout — override CLIENT_FEATURE_FLAGS_FILE if yours isn't a sibling directory; when the
+# file is missing the hint is simply skipped. This is documentation only: the backend keeps no
+# allow-list, so it can name a flag the client doesn't know yet (and vice versa).
+CLIENT_FEATURE_FLAGS_FILE ?= ../Maxi80/Sources/Maxi80/FeatureFlags.swift
+#
 # The merged environment goes over as JSON, not the `Variables={k=v,...}` shorthand: a flag list
 # contains commas and `=`, which the shorthand parser would split into further variables (so
 # `FEATURE_FLAGS=a=true,b=false` would land as FEATURE_FLAGS=a=true plus a bogus `b` variable).
@@ -86,6 +98,21 @@ set-feature-flags:
 	env_json=$$(aws lambda get-function-configuration --function-name "$$fn" \
 	  --region $(AWS_REGION) --profile $(AWS_PROFILE) \
 	  --query 'Environment.Variables' --output json); \
+	if [ "$(origin FLAGS)" = "undefined" ]; then \
+	  current=$$(printf '%s' "$$env_json" | python3 -c 'import json, sys; print((json.load(sys.stdin) or {}).get("FEATURE_FLAGS") or "")'); \
+	  echo "FLAGS is required. Nothing changed." >&2; \
+	  echo >&2; \
+	  echo "Copy, edit, re-run — this is the current configuration:" >&2; \
+	  echo >&2; \
+	  echo "  make set-feature-flags FLAGS=\"$$current\"" >&2; \
+	  echo >&2; \
+	  echo "FLAGS replaces the whole list: drop a flag to remove it, and pass FLAGS=\"\" to clear all." >&2; \
+	  if [ -f "$(CLIENT_FEATURE_FLAGS_FILE)" ]; then \
+	    known=$$(sed -n 's/^ *case .* = "\([a-z0-9_]*\)"/\1/p' "$(CLIENT_FEATURE_FLAGS_FILE)" | sort | paste -sd' ' -); \
+	    [ -z "$$known" ] || { echo >&2; echo "Flags the client understands: $$known" >&2; }; \
+	  fi; \
+	  exit 1; \
+	fi; \
 	new_env=$$(printf '%s' "$$env_json" | FEATURE_FLAGS='$(FLAGS)' python3 -c 'import json, os, sys; v = json.load(sys.stdin) or {}; v["FEATURE_FLAGS"] = os.environ["FEATURE_FLAGS"]; json.dump({"Variables": v}, sys.stdout)'); \
 	aws lambda update-function-configuration \
 	  --function-name "$$fn" \
