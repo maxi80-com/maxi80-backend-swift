@@ -59,7 +59,8 @@ public struct ArtworkAction: Action {
         logger.debug("Handling artwork request")
 
         // Missing parameters throw QueryParameterError, which the router maps to 400.
-        let artist = try request.queryParameters.require("artist")
+        // Show artwork is stored under "Maxi80"; the client sends "" or the raw station spelling.
+        let artist = normalizeMaxi80Artist(try request.queryParameters.require("artist"))
         let title = try request.queryParameters.require("title")
 
         let key = "\(keyPrefix)/\(artist)/\(title)/artwork.jpg"

@@ -142,6 +142,42 @@ struct MetadataParserTests {
         #expect(searchTitle("Title (middle) end") == "Title (middle) end")
     }
 
+    // Custom show artwork is uploaded to S3 under the key the collector derives from the stream
+    // title, so these exact stream strings must keep parsing to the same artist/title.
+    @Test(
+        "Show stream titles parse to their artwork storage key",
+        arguments: [
+            ("07h-10h Le Maxi Ptit Dej Maxi 80", "07h", "10h Le Maxi Ptit Dej Maxi 80"),
+            ("Dj BOLLACHA MEGAMIX WEEKEND", "Maxi80", "Dj BOLLACHA MEGAMIX WEEKEND"),
+            ("Jouez au Grand Quiz des Années 80 !", "Maxi80", "Jouez au Grand Quiz des Années 80 !"),
+            ("L'Essentiel de l'Actu en 2 minutes", "Maxi80", "L'Essentiel de l'Actu en 2 minutes"),
+            ("MAXI80 - LE POINT METEO", "Maxi80", "LE POINT METEO"),
+            ("MUSIC & NEWS AVEC STEF SUR MAXI80 WEEKEND", "Maxi80", "MUSIC & NEWS AVEC STEF SUR MAXI80 WEEKEND"),
+            ("SEB SUR MAXI 80 - 1 TUBE ET PUIS C TOUT", "SEB SUR MAXI 80", "1 TUBE ET PUIS C TOUT"),
+            ("Votre Horoscope sur MAXI 80", "Maxi80", "Votre Horoscope sur MAXI 80"),
+        ]
+    )
+    func testShowStreamTitles(input: String, expectedArtist: String, expectedTitle: String) {
+        let result = parseTrackMetadata(input)
+        #expect(result.artist == expectedArtist)
+        #expect(result.title == expectedTitle)
+    }
+
+    @Test(
+        "Station-name artist normalizes to Maxi80, other artists pass through",
+        arguments: [
+            ("", "Maxi80"),
+            ("Maxi80", "Maxi80"),
+            ("MAXI80", "Maxi80"),
+            ("maxi 80", "Maxi80"),
+            ("SEB SUR MAXI 80", "SEB SUR MAXI 80"),
+            ("07h", "07h"),
+        ]
+    )
+    func testNormalizeMaxi80Artist(input: String, expected: String) {
+        #expect(normalizeMaxi80Artist(input) == expected)
+    }
+
     @Test("Sample data validation")
     func testSampleData() {
         // Test a selection of actual metadata entries

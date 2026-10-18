@@ -69,8 +69,7 @@ public func parseTrackMetadata(_ input: String) -> TrackMetadata {
         return TrackMetadata(artist: nil, title: nil)
     }
 
-    // If artist is empty but title exists, use Maxi80 as artist
-    let finalArtist = artistPart.isEmpty ? "Maxi80" : normalizeMaxi80Artist(artistPart)
+    let finalArtist = normalizeMaxi80Artist(artistPart)
     let finalTitle = titlePart.isEmpty ? nil : titlePart
 
     return TrackMetadata(
@@ -103,9 +102,18 @@ private func removeTrailingParentheses(_ title: String) -> String {
     return trimmed
 }
 
-private func normalizeMaxi80Artist(_ artist: String) -> String {
+/// Maps the station-name artist to its canonical storage form, `"Maxi80"`.
+///
+/// Show and filler metadata has no real artist: the collector stores it under `Maxi80`, while the
+/// client sends an empty artist (no separator in the stream) or the raw spelling (`MAXI80`,
+/// `Maxi 80`). Both sides must resolve to the same S3 key, so an empty artist and any casing of
+/// `maxi80` / `maxi 80` become `"Maxi80"`; every other artist is returned unchanged.
+///
+/// - Parameter artist: The artist as parsed from the stream or received from the client.
+/// - Returns: `"Maxi80"` for the station-name artist, otherwise `artist`.
+public func normalizeMaxi80Artist(_ artist: String) -> String {
     let lowercased = artist.lowercased()
-    if lowercased == "maxi80" || lowercased == "maxi 80" {
+    if lowercased.isEmpty || lowercased == "maxi80" || lowercased == "maxi 80" {
         return "Maxi80"
     }
     return artist

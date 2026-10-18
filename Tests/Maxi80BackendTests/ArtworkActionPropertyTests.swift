@@ -69,6 +69,26 @@ struct ArtworkActionPropertyTests {
         }
     }
 
+    @Test(
+        "Station-name artist from the client resolves to the collector's Maxi80 key",
+        arguments: [
+            ("", "Votre Horoscope sur MAXI 80"),
+            ("MAXI80", "LE POINT METEO"),
+            ("Maxi 80", "Le Meilleur Son 80s"),
+        ]
+    )
+    func stationArtistKeyNormalization(artist: String, title: String) async throws {
+        let mockS3 = MockS3Client()
+        await mockS3.setExists(true)
+        await mockS3.setPresignedURL("https://example.com/art")
+
+        let action = makeArtworkAction(s3Client: mockS3)
+        _ = try await action.handle(try makeRequest(artist: artist, title: title), testLogger)
+
+        let records = await mockS3.getCallRecords()
+        #expect(records.map(\.key) == ["v2/Maxi80/\(title)/artwork.jpg"])
+    }
+
     // Feature: replace-search-with-image-endpoint, Property 2: Artwork exists returns JSON with pre-signed URL
     @Test("Property 2: When artwork exists, response decodes to ArtworkResponse with non-empty url")
     func artworkExistsReturnsJSON() async throws {
