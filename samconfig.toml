@@ -15,7 +15,7 @@ region = "eu-central-1"
 profile = "maxi80"
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
-parameter_overrides = "MetadataBucket=artwork.maxi80.com MetadataBucketRegion=eu-west-1 ArtworkCdnEnabled=false"
+parameter_overrides = "MetadataBucket=artwork.maxi80.com MetadataBucketRegion=eu-west-1 ArtworkCdnEnabled=true"
 
 [dev.global.parameters]
 region = "eu-central-1"
@@ -29,7 +29,7 @@ s3_prefix = "Maxi80Backend-2025"
 region = "eu-central-1"
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
-parameter_overrides = "MetadataBucket=artwork.maxi80.com MetadataBucketRegion=eu-west-1 ArtworkCdnEnabled=false"
+parameter_overrides = "MetadataBucket=artwork.maxi80.com MetadataBucketRegion=eu-west-1 ArtworkCdnEnabled=true"
 
 [ci.global.parameters]
 region = "eu-central-1"
