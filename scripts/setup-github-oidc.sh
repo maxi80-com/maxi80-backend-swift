@@ -132,6 +132,9 @@ echo
 # The SAM-managed artifact bucket (resolve_s3) is matched by its well-known
 # `aws-sam-cli-managed-*` naming. This is deliberately pragmatic, not maximally
 # least-privilege — review before using in a multi-tenant account.
+# The CloudFrontArtwork statement uses Resource "*" because CreateDistribution and the
+# OriginAccessControl / ResponseHeadersPolicy actions don't support resource-level ARNs: an
+# account-scoped ARN implicitly denies them (confirmed with iam simulate-principal-policy).
 DEPLOY_POLICY="$(cat <<JSON
 {
   "Version": "2012-10-17",
@@ -196,6 +199,7 @@ DEPLOY_POLICY="$(cat <<JSON
       "Effect": "Allow",
       "Action": [
         "cloudfront:CreateDistribution",
+        "cloudfront:CreateDistributionWithTags",
         "cloudfront:UpdateDistribution",
         "cloudfront:DeleteDistribution",
         "cloudfront:GetDistribution",
@@ -215,7 +219,7 @@ DEPLOY_POLICY="$(cat <<JSON
         "cloudfront:GetResponseHeadersPolicyConfig",
         "cloudfront:GetCachePolicy"
       ],
-      "Resource": "arn:aws:cloudfront::${ACCOUNT_ID}:*"
+      "Resource": "*"
     },
     {
       "Sid": "Lambda",
