@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+   Maxi80 artwork bucket policy: lets CloudFront (Origin Access Control) read artwork.jpg objects.
+   Deployed to the BUCKET's region (eu-west-1), separately from the main eu-central-1 stack:
+   CloudFormation can't manage a bucket policy across regions (S3 answers 301 PermanentRedirect).
+
+# Deploy BEFORE template.yaml (`make deploy` and CI both do): the main stack switches /artwork to
+# CloudFront URLs, which return 403 until this policy exists. Because stacks in different regions
+# can't read each other's outputs, the grant is scoped to this account's distributions rather than
+# the exact ArtworkDistribution ARN. Only artwork is exposed; metadata.json, search.json and
+# history.json stay private. This stack owns the WHOLE bucket policy: any statement added to the
+# bucket outside this template is overwritten on the next deploy.
+
+Parameters:
+   ArtworkBucket:
+      Type: String
+      Default: artwork.maxi80.com
+   KeyPrefix:
+      Type: String
+      Default: v2
+
+Resources:
+   ArtworkBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+         Bucket: !Ref ArtworkBucket
+         PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+               - Sid: AllowCloudFrontReadArtwork
+                 Effect: Allow
+                 Principal:
+                    Service: cloudfront.amazonaws.com
+                 Action: s3:GetObject
+                 Resource: !Sub "arn:aws:s3:::${ArtworkBucket}/${KeyPrefix}/*/artwork.jpg"
+                 Condition:
+                    ArnLike:
+                       AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/*"

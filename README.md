@@ -106,11 +106,16 @@ they do not know, and fall back to their compiled-in defaults when `features` is
 
 ### `GET /artwork?artist={artist}&title={title}`
 
-Checks S3 for `v2/<artist>/<title>/artwork.jpg`. Returns a pre-signed GET URL if present:
+Checks S3 for `v2/<artist>/<title>/artwork.jpg`. If present, returns a stable CloudFront URL:
 
 ```json
-{ "url": "https://<bucket>.s3.<region>.amazonaws.com/v2/<artist>/<title>/artwork.jpg?..." }
+{ "url": "https://<id>.cloudfront.net/v2/<artist>/<title>/artwork.jpg" }
 ```
+
+The CloudFront domain comes from the `ARTWORK_BASE_URL` environment variable (set by `template.yaml`
+from the `ArtworkDistribution`). With `ARTWORK_BASE_URL` empty, the endpoint falls back to a
+pre-signed S3 GET URL. CloudFront serves artwork because S3 internet egress was ~99% of the S3 bill;
+its free tier covers 1 TB/month and the stable URL lets CloudFront and the client cache downloads.
 
 If no artwork exists, responds with `204 No Content`. Missing `artist` or `title` parameters return `400`.
 
@@ -225,8 +230,20 @@ swift run Maxi80CLI --profile maxi80 --region eu-central-1 get-secrets    # veri
 
 ## Deploying
 
-The deploy stack is `Maxi80Backend-2025` (SAM, `template.yaml`), region **eu-central-1**. All three
-functions are ARM64, `provided.al2023`, `bootstrap` handler. `samconfig.toml` defines two config
+Two CloudFormation stacks, **deployed in this order**:
+
+| # | Stack | Template | Region | Contents |
+|---|-------|----------|--------|----------|
+| 1 | `Maxi80Backend-2025-ArtworkPolicy` | `artwork-bucket-policy.yaml` | **eu-west-1** | Bucket policy on `artwork.maxi80.com` letting CloudFront read `v2/*/artwork.jpg` |
+| 2 | `Maxi80Backend-2025` | `template.yaml` (SAM) | **eu-central-1** | Lambdas, HTTP API, alarms, CloudFront artwork distribution |
+
+The artwork bucket lives in eu-west-1, and CloudFormation can't manage a bucket policy across regions
+(S3 rejects it with `301 PermanentRedirect`), so the policy is its own small stack in the bucket's
+region. It must be deployed **first**: stack 2 points `/artwork` at CloudFront, which returns `403`
+until the policy exists. Both `make deploy` and CI respect that order. Stack 1 owns the **entire**
+bucket policy, so add any other bucket statement to `artwork-bucket-policy.yaml`, not by hand.
+
+All three functions are ARM64, `provided.al2023`, `bootstrap` handler. `samconfig.toml` defines two config
 environments: `dev` (local, uses the `maxi80` AWS profile) and `ci` (used by GitHub Actions, no local
 profile — credentials come from the assumed OIDC role).
 
@@ -235,7 +252,8 @@ profile — credentials come from the assumed OIDC role).
 ```bash
 make build     # cross-compiles the three Lambda products for al2023 via the
                # swift-aws-lambda-runtime lambda-build plugin (Apple `container` backend)
-make deploy    # sam deploy --config-env dev --express
+make deploy    # 1. artwork bucket policy stack (eu-west-1)  2. sam deploy --config-env dev --express
+make deploy-artwork-policy   # stack 1 only
 ```
 
 `make build` writes zips under `.build/plugins/AWSLambdaBuilder/outputs/…`, which `template.yaml`
@@ -249,7 +267,8 @@ Every push to `main` (and manual `workflow_dispatch`) runs `.github/workflows/de
 2. Cross-compiles the three Lambda zips with the `lambda-build` plugin, using the **Docker** backend
    (`--cross-compile docker`) instead of Apple's `container` CLI, on an arm64 runner.
 3. Assumes a short-lived AWS role via **GitHub OIDC** (no long-lived access keys in the repo).
-4. Runs `sam deploy --config-env ci`.
+4. Deploys the artwork bucket policy stack to eu-west-1 (`aws cloudformation deploy`).
+5. Runs `sam deploy --config-env ci`.
 
 **One-time bootstrap:** run the provisioning script with an administrator identity to create the OIDC
 provider and the scoped deploy role, then publish the role ARN as a repo variable:
@@ -260,7 +279,27 @@ AWS_PROFILE=maxi80 GITHUB_REPO=sebsto/maxi80-backend-swift scripts/setup-github-
 gh variable set AWS_DEPLOY_ROLE_ARN --repo sebsto/maxi80-backend-swift --body "<role-arn>"
 ```
 
-The role's trust policy is pinned to this repo on `refs/heads/main`.
+The role's trust policy is pinned to this repo on `refs/heads/main`. The script is idempotent:
+**re-run it whenever its permissions change** (e.g. after adding CloudFront and the eu-west-1 artwork
+policy stack), otherwise the next CI deploy fails with `AccessDenied`.
+
+### First rollout of CloudFront artwork
+
+One-time sequence, before (or instead of) merging the change to `main`:
+
+```bash
+# 1. Grant the CI role the new CloudFront / eu-west-1 permissions.
+AWS_PROFILE=maxi80 scripts/setup-github-oidc.sh
+# 2. Create the bucket policy stack first, so CloudFront can read artwork as soon as it exists.
+make deploy-artwork-policy
+# 3. Merge → CI deploys the main stack (creating the distribution takes a few minutes).
+# 4. Verify: the URL is on cloudfront.net, and fetching it returns 200.
+make call-artwork
+curl -sI "$(make -s call-artwork | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')" | head -1
+```
+
+Rollback: set `ARTWORK_BASE_URL: ""` in `template.yaml` (or directly on the function) to go back to
+pre-signed S3 URLs. The distribution and bucket policy can stay in place.
 
 ## Testing the deployed API
 

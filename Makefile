@@ -14,7 +14,7 @@ build:
 test:
 	swift test
 
-deploy:
+deploy: deploy-artwork-policy
 	sam deploy --config-env dev --express
 
 # Get the HTTP API URL and API key from AWS
@@ -120,31 +120,18 @@ set-feature-flags:
 	  --environment "$$new_env" \
 	  --query 'Environment.Variables.FEATURE_FLAGS' --output text
 
-# One-time setup: let CloudFront (Origin Access Control) read artwork.jpg objects from the artwork
-# bucket. The bucket is in eu-west-1, outside this eu-central-1 stack, so its policy isn't in
-# template.yaml. The policy is scoped to this account's distributions rather than one distribution
-# ARN so it can be applied BEFORE the first deploy that switches /artwork to CloudFront URLs —
-# otherwise clients would get 403s between that deploy and this step. Only artwork is exposed;
-# metadata.json, search.json and history.json stay private. put-bucket-policy REPLACES the bucket
-# policy (there was none when this was written).
-ARTWORK_BUCKET = artwork.maxi80.com
-ACCOUNT_ID = $(shell aws sts get-caller-identity --profile $(AWS_PROFILE) --query Account --output text 2>/dev/null)
+# The artwork bucket policy (CloudFront read access) is a separate stack in the bucket's region,
+# eu-west-1: CloudFormation can't manage a bucket policy across regions. It must be deployed before
+# the main stack, which is why `deploy` runs it first. See artwork-bucket-policy.yaml.
+ARTWORK_POLICY_STACK_NAME = $(SAM_STACK_NAME)-ArtworkPolicy
+ARTWORK_POLICY_REGION = eu-west-1
 
-set-artwork-bucket-policy:
-	@set -eu; \
-	[ -n "$(ACCOUNT_ID)" ] || { echo "Could not resolve the AWS account id" >&2; exit 1; }; \
-	aws s3api put-bucket-policy --bucket $(ARTWORK_BUCKET) --profile $(AWS_PROFILE) --policy '{ \
-	  "Version": "2012-10-17", \
-	  "Statement": [{ \
-	    "Sid": "AllowCloudFrontReadArtwork", \
-	    "Effect": "Allow", \
-	    "Principal": {"Service": "cloudfront.amazonaws.com"}, \
-	    "Action": "s3:GetObject", \
-	    "Resource": "arn:aws:s3:::$(ARTWORK_BUCKET)/v2/*/artwork.jpg", \
-	    "Condition": {"ArnLike": {"AWS:SourceArn": "arn:aws:cloudfront::$(ACCOUNT_ID):distribution/*"}} \
-	  }] \
-	}'; \
-	aws s3api get-bucket-policy --bucket $(ARTWORK_BUCKET) --profile $(AWS_PROFILE) --query Policy --output text
+deploy-artwork-policy:
+	aws cloudformation deploy \
+	  --template-file artwork-bucket-policy.yaml \
+	  --stack-name $(ARTWORK_POLICY_STACK_NAME) \
+	  --region $(ARTWORK_POLICY_REGION) --profile $(AWS_PROFILE) \
+	  --no-fail-on-empty-changeset
 
 get-parameters:
 	@aws ssm get-parameters-by-path --path /maxi80/ --with-decryption --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Parameters[*].[Name,Value]'

@@ -173,8 +173,9 @@ Resources:
    # CloudFront in front of the artwork bucket. S3 internet egress was ~99% of the S3 bill
    # (~120 GB/month of artwork); CloudFront's free tier covers 1 TB/month, and its cache plus the
    # stable URLs it enables cut origin reads too. Only `v2/*/artwork.jpg` is readable through it:
-   # the bucket policy granting this distribution access is NOT managed here, because the bucket
-   # lives in eu-west-1 outside this eu-central-1 stack — see `make set-artwork-bucket-policy`.
+   # the bucket policy granting CloudFront access is NOT managed here, because the bucket lives in
+   # eu-west-1 and CloudFormation can't set a bucket policy across regions — it is the separate
+   # artwork-bucket-policy.yaml stack, deployed first by `make deploy` and CI.
    ArtworkOriginAccessControl:
       Type: AWS::CloudFront::OriginAccessControl
       Properties:
@@ -291,7 +292,7 @@ Outputs:
       Description: HTTP API endpoint URL
       Value: !Sub "https://${Maxi80HttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
    ArtworkDistributionArn:
-      Description: CloudFront distribution serving artwork (used by make set-artwork-bucket-policy)
+      Description: CloudFront distribution serving artwork
       Value: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${ArtworkDistribution}"
    ArtworkBaseUrl:
       Description: Base URL of artwork served through CloudFront

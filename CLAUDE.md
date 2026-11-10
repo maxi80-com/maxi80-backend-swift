@@ -29,7 +29,7 @@ swift test --filter S3WriterTests
 
 ```bash
 make build     # cross-compiles IcecastMetadataCollector, Maxi80Lambda, AuthorizerLambda for al2023
-make deploy     # sam deploy --config-env dev
+make deploy     # artwork bucket policy stack (eu-west-1), then sam deploy --config-env dev
 ```
 
 `make build` uses the swift-aws-lambda-runtime plugin (`swift:amazonlinux2023` base) with Apple's container CLI
@@ -97,7 +97,9 @@ dependencies.
 - `GET /artwork?artist=&title=` — HEADs `v2/<artist>/<title>/artwork.jpg`; if present returns a
   stable **CloudFront URL** (`ARTWORK_BASE_URL`, the stack's `ArtworkDistribution`), or a
   **pre-signed S3 GET URL** when that env var is empty; else `204 No Content`. CloudFront reads the
-  bucket via OAC; its bucket policy lives outside the stack (`make set-artwork-bucket-policy`).
+  bucket via OAC; its bucket policy is a **separate stack in eu-west-1** (`artwork-bucket-policy.yaml`)
+  because CloudFormation can't set a bucket policy across regions. It must deploy before
+  `template.yaml`; `make deploy` and CI do that.
 - `GET /history` — streams `v2/history.json` back verbatim; `{"entries":[]}` if absent.
 
 All three are behind the Lambda authorizer; missing query params throw `QueryParameterError` → 400.
