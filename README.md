@@ -112,8 +112,8 @@ Checks S3 for `v2/<artist>/<title>/artwork.jpg`. If present, returns a stable Cl
 { "url": "https://<id>.cloudfront.net/v2/<artist>/<title>/artwork.jpg" }
 ```
 
-The CloudFront domain comes from the `ARTWORK_BASE_URL` environment variable (set by `template.yaml`
-from the `ArtworkDistribution`). With `ARTWORK_BASE_URL` empty, the endpoint falls back to a
+The CloudFront domain comes from the `ARTWORK_BASE_URL` environment variable, set by `template.yaml`
+from the `ArtworkDistribution` when the `ArtworkCdnEnabled` parameter is `true`. With `ARTWORK_BASE_URL` empty, the endpoint falls back to a
 pre-signed S3 GET URL. CloudFront serves artwork because S3 internet egress was ~99% of the S3 bill;
 its free tier covers 1 TB/month and the stable URL lets CloudFront and the client cache downloads.
 
@@ -285,21 +285,31 @@ policy stack), otherwise the next CI deploy fails with `AccessDenied`.
 
 ### First rollout of CloudFront artwork
 
-One-time sequence, before (or instead of) merging the change to `main`:
+CloudFront is launched dark: `ArtworkCdnEnabled` (in `samconfig.toml`, both `dev` and `ci`) defaults
+to `false`, so the distribution exists but `/artwork` keeps returning pre-signed S3 URLs and no app
+is affected. Only flip it after a real fetch through CloudFront succeeds — the artwork bucket name
+contains dots, which the S3 wildcard certificate doesn't cover, and only an end-to-end request shows
+whether the CloudFront → S3 origin handshake works.
 
 ```bash
 # 1. Grant the CI role the new CloudFront / eu-west-1 permissions.
 AWS_PROFILE=maxi80 scripts/setup-github-oidc.sh
 # 2. Create the bucket policy stack first, so CloudFront can read artwork as soon as it exists.
 make deploy-artwork-policy
-# 3. Merge → CI deploys the main stack (creating the distribution takes a few minutes).
-# 4. Verify: the URL is on cloudfront.net, and fetching it returns 200.
-make call-artwork
-curl -sI "$(make -s call-artwork | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')" | head -1
+# 3. Merge → CI deploys the main stack with ArtworkCdnEnabled=false (apps unaffected).
+# 4. Verify CloudFront directly; expect "HTTP/2 200" (a 502 means the origin TLS handshake fails).
+CDN=$(aws cloudformation describe-stacks --stack-name Maxi80Backend-2025 --region eu-central-1 \
+  --profile maxi80 --query 'Stacks[0].Outputs[?OutputKey==`ArtworkBaseUrl`].OutputValue' --output text)
+curl -sI "$CDN/v2/Pink%20Floyd/The%20Wall/artwork.jpg" | head -1
+# 5. Only on 200: set ArtworkCdnEnabled=true in samconfig.toml (dev AND ci), merge/deploy, then
+#    check that `make call-artwork` returns a cloudfront.net URL.
 ```
 
-Rollback: set `ARTWORK_BASE_URL: ""` in `template.yaml` (or directly on the function) to go back to
-pre-signed S3 URLs. The distribution and bucket policy can stay in place.
+If step 4 returns 502, don't flip the flag. Put an S3 Access Point in front of the bucket and use its
+dot-free alias (`<alias>.s3.eu-west-1.amazonaws.com`) as the CloudFront origin instead.
+
+Rollback: set `ArtworkCdnEnabled=false` in `samconfig.toml` and deploy (or set `ARTWORK_BASE_URL` to
+`""` directly on the function for an immediate switch) to go back to pre-signed S3 URLs. The distribution and bucket policy can stay in place.
 
 ## Testing the deployed API
 

@@ -21,6 +21,17 @@ Parameters:
       Type: String
       Default: eu-west-1
       Description: Region of MetadataBucket (it is not created by this stack), used for the CloudFront origin
+   ArtworkCdnEnabled:
+      Type: String
+      AllowedValues: ["true", "false"]
+      Default: "false"
+      Description: >-
+         "true" makes /artwork return CloudFront URLs; "false" keeps pre-signed S3 URLs. The
+         distribution exists either way, so it can be verified end to end (curl -I on a
+         cloudfront.net artwork URL returning 200) before any app is pointed at it.
+
+Conditions:
+   IsArtworkCdnEnabled: !Equals [!Ref ArtworkCdnEnabled, "true"]
 
 Resources:
 
@@ -91,9 +102,12 @@ Resources:
                S3_BUCKET: !Ref MetadataBucket
                KEY_PREFIX: v2
                URL_EXPIRATION: "3600"
-               # /artwork returns stable CloudFront URLs instead of pre-signed S3 URLs. Set to ""
-               # to fall back to pre-signed URLs.
-               ARTWORK_BASE_URL: !Sub "https://${ArtworkDistribution.DomainName}"
+               # /artwork returns stable CloudFront URLs instead of pre-signed S3 URLs when
+               # ArtworkCdnEnabled is "true"; "" keeps pre-signed URLs.
+               ARTWORK_BASE_URL: !If
+                  - IsArtworkCdnEnabled
+                  - !Sub "https://${ArtworkDistribution.DomainName}"
+                  - ""
                # Runtime feature flags served in the /station response, as a comma-separated list
                # of name=bool pairs (lower_snake_case names, true/false or 1/0). An empty string
                # means no `features` key in the payload — the pre-flags behaviour older app

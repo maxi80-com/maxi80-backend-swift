@@ -90,7 +90,7 @@ public struct ArtworkAction: Action {
             return try await s3Client.presignedGetURL(bucket: bucket, key: key, expiration: urlExpiration)
         }
         var base = cdnBaseURL.absoluteString
-        if base.hasSuffix("/") { base.removeLast() }
+        while base.hasSuffix("/") { base.removeLast() }
         guard let url = URL(string: "\(base)/\(key.addingPathPercentEncoding())") else {
             throw ArtworkURLError.invalidCDNURL(key: key)
         }

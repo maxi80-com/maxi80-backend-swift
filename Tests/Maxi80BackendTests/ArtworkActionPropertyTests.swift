@@ -211,7 +211,7 @@ struct ArtworkActionPropertyTests {
 
     @Test(
         "With a CDN base URL, artwork resolves to a stable percent-encoded CloudFront URL",
-        arguments: ["https://d123.cloudfront.net", "https://d123.cloudfront.net/"]
+        arguments: ["https://d123.cloudfront.net", "https://d123.cloudfront.net/", "https://d123.cloudfront.net//"]
     )
     func cdnURLIsStableAndEncoded(base: String) async throws {
         let mockS3 = MockS3Client()

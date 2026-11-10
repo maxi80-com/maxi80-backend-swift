@@ -95,7 +95,8 @@ dependencies.
 - `GET /station` — returns the hardcoded `Station.default` (station name, stream URL, descriptions)
   plus an **optional** `features` object of runtime feature flags (see below).
 - `GET /artwork?artist=&title=` — HEADs `v2/<artist>/<title>/artwork.jpg`; if present returns a
-  stable **CloudFront URL** (`ARTWORK_BASE_URL`, the stack's `ArtworkDistribution`), or a
+  stable **CloudFront URL** (`ARTWORK_BASE_URL`, the stack's `ArtworkDistribution`, only when the
+  `ArtworkCdnEnabled` stack parameter is `true`), or a
   **pre-signed S3 GET URL** when that env var is empty; else `204 No Content`. CloudFront reads the
   bucket via OAC; its bucket policy is a **separate stack in eu-west-1** (`artwork-bucket-policy.yaml`)
   because CloudFormation can't set a bucket policy across regions. It must deploy before
