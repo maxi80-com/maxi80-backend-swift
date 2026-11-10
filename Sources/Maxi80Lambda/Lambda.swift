@@ -34,6 +34,9 @@ struct Maxi80Lambda: LambdaHandler {
             let bucket = Lambda.env("S3_BUCKET") ?? "artwork.maxi80.com"
             let keyPrefix = Lambda.env("KEY_PREFIX") ?? "v2"
             let urlExpiration = TimeInterval(Lambda.env("URL_EXPIRATION").flatMap { Int($0) } ?? 3600)
+            // CloudFront base URL for artwork; unset/empty falls back to pre-signed S3 URLs.
+            let cdnBaseURL = Lambda.env("ARTWORK_BASE_URL").flatMap { $0.isEmpty ? nil : URL(string: $0) }
+            logger.info("Artwork URLs: \(cdnBaseURL.map { "CloudFront \($0)" } ?? "pre-signed S3")")
 
             let resolvedS3Client: any S3ManagerProtocol
             if let provided = s3Client {
@@ -67,7 +70,8 @@ struct Maxi80Lambda: LambdaHandler {
                 s3Client: resolvedS3Client,
                 bucket: bucket,
                 keyPrefix: keyPrefix,
-                urlExpiration: urlExpiration
+                urlExpiration: urlExpiration,
+                cdnBaseURL: cdnBaseURL
             )
             let history = HistoryAction(
                 s3Client: resolvedS3Client,

@@ -36,23 +36,31 @@ public struct StationAction: Action {
 }
 
 /// Handles artwork lookup requests by checking S3 for artwork existence and
-/// returning a pre-signed URL if found.
+/// returning a URL to it if found.
+///
+/// With a `cdnBaseURL` the URL is a stable, unsigned CloudFront URL: CloudFront's free egress tier
+/// replaces S3 internet egress, and a stable URL lets CloudFront and the client's URL cache reuse a
+/// download (a pre-signed URL has a fresh signature on every request, so it never hits a cache).
+/// Without one it falls back to a pre-signed S3 URL.
 public struct ArtworkAction: Action {
     private let s3Client: any S3ManagerProtocol
     private let bucket: String
     private let keyPrefix: String
     private let urlExpiration: TimeInterval
+    private let cdnBaseURL: URL?
 
     public init(
         s3Client: any S3ManagerProtocol,
         bucket: String,
         keyPrefix: String,
-        urlExpiration: TimeInterval
+        urlExpiration: TimeInterval,
+        cdnBaseURL: URL? = nil
     ) {
         self.s3Client = s3Client
         self.bucket = bucket
         self.keyPrefix = keyPrefix
         self.urlExpiration = urlExpiration
+        self.cdnBaseURL = cdnBaseURL
     }
 
     public func handle(_ request: Routing.HTTPRequest, _ logger: Logger) async throws -> RouteResponse {
@@ -73,9 +81,25 @@ public struct ArtworkAction: Action {
             return .empty(statusCode: .noContent)
         }
 
-        let url = try await s3Client.presignedGetURL(bucket: bucket, key: key, expiration: urlExpiration)
+        let url = try await artworkURL(for: key)
         return .json(ArtworkResponse(url: url), statusCode: .ok)
     }
+
+    func artworkURL(for key: String) async throws -> URL {
+        guard let cdnBaseURL else {
+            return try await s3Client.presignedGetURL(bucket: bucket, key: key, expiration: urlExpiration)
+        }
+        var base = cdnBaseURL.absoluteString
+        while base.hasSuffix("/") { base.removeLast() }
+        guard let url = URL(string: "\(base)/\(key.addingPathPercentEncoding())") else {
+            throw ArtworkURLError.invalidCDNURL(key: key)
+        }
+        return url
+    }
+}
+
+public enum ArtworkURLError: Error {
+    case invalidCDNURL(key: String)
 }
 
 /// Handles history requests by reading history.json from S3 and returning it directly.

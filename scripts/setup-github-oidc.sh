@@ -33,6 +33,11 @@ STACK_NAME="${STACK_NAME:-Maxi80Backend-2025}"
 # The bootstrap stack `sam deploy` auto-creates (with resolve_s3) to hold its
 # managed artifact bucket. CloudFormation actions must be allowed on it too.
 SAM_MANAGED_STACK_NAME="${SAM_MANAGED_STACK_NAME:-aws-sam-cli-managed-default}"
+# The artwork bucket policy is its own stack in the bucket's region (artwork-bucket-policy.yaml):
+# CloudFormation can't manage a bucket policy across regions.
+ARTWORK_BUCKET="${ARTWORK_BUCKET:-artwork.maxi80.com}"
+ARTWORK_POLICY_REGION="${ARTWORK_POLICY_REGION:-eu-west-1}"
+ARTWORK_POLICY_STACK_NAME="${ARTWORK_POLICY_STACK_NAME:-${STACK_NAME}-ArtworkPolicy}"
 
 OIDC_HOST="token.actions.githubusercontent.com"
 OIDC_URL="https://${OIDC_HOST}"
@@ -127,6 +132,9 @@ echo
 # The SAM-managed artifact bucket (resolve_s3) is matched by its well-known
 # `aws-sam-cli-managed-*` naming. This is deliberately pragmatic, not maximally
 # least-privilege — review before using in a multi-tenant account.
+# The CloudFrontArtwork statement uses Resource "*" because CreateDistribution and the
+# OriginAccessControl / ResponseHeadersPolicy actions don't support resource-level ARNs: an
+# account-scoped ARN implicitly denies them (confirmed with iam simulate-principal-policy).
 DEPLOY_POLICY="$(cat <<JSON
 {
   "Version": "2012-10-17",
@@ -152,6 +160,7 @@ DEPLOY_POLICY="$(cat <<JSON
       "Resource": [
         "arn:aws:cloudformation:${AWS_REGION}:${ACCOUNT_ID}:stack/${STACK_NAME}/*",
         "arn:aws:cloudformation:${AWS_REGION}:${ACCOUNT_ID}:stack/${SAM_MANAGED_STACK_NAME}/*",
+        "arn:aws:cloudformation:${ARTWORK_POLICY_REGION}:${ACCOUNT_ID}:stack/${ARTWORK_POLICY_STACK_NAME}/*",
         "arn:aws:cloudformation:${AWS_REGION}:aws:transform/Serverless-2016-10-31"
       ]
     },
@@ -174,6 +183,43 @@ DEPLOY_POLICY="$(cat <<JSON
         "arn:aws:s3:::aws-sam-cli-managed-*",
         "arn:aws:s3:::aws-sam-cli-managed-*/*"
       ]
+    },
+    {
+      "Sid": "ArtworkBucketPolicy",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketPolicy",
+        "s3:PutBucketPolicy",
+        "s3:DeleteBucketPolicy"
+      ],
+      "Resource": "arn:aws:s3:::${ARTWORK_BUCKET}"
+    },
+    {
+      "Sid": "CloudFrontArtwork",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateDistribution",
+        "cloudfront:CreateDistributionWithTags",
+        "cloudfront:UpdateDistribution",
+        "cloudfront:DeleteDistribution",
+        "cloudfront:GetDistribution",
+        "cloudfront:GetDistributionConfig",
+        "cloudfront:TagResource",
+        "cloudfront:UntagResource",
+        "cloudfront:ListTagsForResource",
+        "cloudfront:CreateOriginAccessControl",
+        "cloudfront:UpdateOriginAccessControl",
+        "cloudfront:DeleteOriginAccessControl",
+        "cloudfront:GetOriginAccessControl",
+        "cloudfront:GetOriginAccessControlConfig",
+        "cloudfront:CreateResponseHeadersPolicy",
+        "cloudfront:UpdateResponseHeadersPolicy",
+        "cloudfront:DeleteResponseHeadersPolicy",
+        "cloudfront:GetResponseHeadersPolicy",
+        "cloudfront:GetResponseHeadersPolicyConfig",
+        "cloudfront:GetCachePolicy"
+      ],
+      "Resource": "*"
     },
     {
       "Sid": "Lambda",

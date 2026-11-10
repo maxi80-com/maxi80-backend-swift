@@ -21,13 +21,15 @@ private func makeArtworkAction(
     s3Client: MockS3Client,
     bucket: String = "test-bucket",
     keyPrefix: String = "v2",
-    urlExpiration: TimeInterval = 3600
+    urlExpiration: TimeInterval = 3600,
+    cdnBaseURL: URL? = nil
 ) -> ArtworkAction {
     ArtworkAction(
         s3Client: s3Client,
         bucket: bucket,
         keyPrefix: keyPrefix,
-        urlExpiration: urlExpiration
+        urlExpiration: urlExpiration,
+        cdnBaseURL: cdnBaseURL
     )
 }
 
@@ -203,5 +205,47 @@ struct ArtworkActionPropertyTests {
         await #expect(throws: QueryParameterError.self) {
             _ = try await action.handle(artistOnly, testLogger)
         }
+    }
+
+    // MARK: - CloudFront URLs
+
+    @Test(
+        "With a CDN base URL, artwork resolves to a stable percent-encoded CloudFront URL",
+        arguments: ["https://d123.cloudfront.net", "https://d123.cloudfront.net/", "https://d123.cloudfront.net//"]
+    )
+    func cdnURLIsStableAndEncoded(base: String) async throws {
+        let mockS3 = MockS3Client()
+        await mockS3.setExists(true)
+        await mockS3.setExists(true)
+
+        let action = makeArtworkAction(s3Client: mockS3, cdnBaseURL: URL(string: base))
+        let request = try makeRequest(artist: "Kim Wilde", title: "Kids in América (maxi)")
+
+        let first = try JSONDecoder().decode(
+            ArtworkResponse.self,
+            from: try TestHelpers.body(of: try await action.handle(request, testLogger))
+        )
+        let second = try JSONDecoder().decode(
+            ArtworkResponse.self,
+            from: try TestHelpers.body(of: try await action.handle(request, testLogger))
+        )
+
+        #expect(
+            first.url.absoluteString
+                == "https://d123.cloudfront.net/v2/Kim%20Wilde/Kids%20in%20Am%C3%A9rica%20(maxi)/artwork.jpg"
+        )
+        #expect(first.url == second.url)
+        #expect(await mockS3.getPresignExpirations().isEmpty)
+    }
+
+    @Test("With a CDN base URL, missing artwork still returns 204")
+    func cdnMissingArtworkReturnsNoContent() async throws {
+        let mockS3 = MockS3Client()
+        await mockS3.setExists(false)
+
+        let action = makeArtworkAction(s3Client: mockS3, cdnBaseURL: URL(string: "https://d123.cloudfront.net"))
+        let response = try await action.handle(try makeRequest(artist: "A", title: "B"), testLogger)
+
+        #expect(response.statusCode == .noContent)
     }
 }

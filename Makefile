@@ -14,7 +14,7 @@ build:
 test:
 	swift test
 
-deploy:
+deploy: deploy-artwork-policy
 	sam deploy --config-env dev --express
 
 # Get the HTTP API URL and API key from AWS
@@ -119,6 +119,19 @@ set-feature-flags:
 	  --region $(AWS_REGION) --profile $(AWS_PROFILE) \
 	  --environment "$$new_env" \
 	  --query 'Environment.Variables.FEATURE_FLAGS' --output text
+
+# The artwork bucket policy (CloudFront read access) is a separate stack in the bucket's region,
+# eu-west-1: CloudFormation can't manage a bucket policy across regions. It must be deployed before
+# the main stack, which is why `deploy` runs it first. See artwork-bucket-policy.yaml.
+ARTWORK_POLICY_STACK_NAME = $(SAM_STACK_NAME)-ArtworkPolicy
+ARTWORK_POLICY_REGION = eu-west-1
+
+deploy-artwork-policy:
+	aws cloudformation deploy \
+	  --template-file artwork-bucket-policy.yaml \
+	  --stack-name $(ARTWORK_POLICY_STACK_NAME) \
+	  --region $(ARTWORK_POLICY_REGION) --profile $(AWS_PROFILE) \
+	  --no-fail-on-empty-changeset
 
 get-parameters:
 	@aws ssm get-parameters-by-path --path /maxi80/ --with-decryption --region $(AWS_REGION) --profile $(AWS_PROFILE) --query 'Parameters[*].[Name,Value]'

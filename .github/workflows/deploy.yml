@@ -139,6 +139,17 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: gha-maxi80-deploy-${{ github.run_id }}
 
+      # The artwork bucket policy lives in its own stack in the bucket's region (CloudFormation
+      # can't manage a bucket policy across regions). It must exist before the main stack points
+      # /artwork at CloudFront, so it deploys first. See artwork-bucket-policy.yaml.
+      - name: Deploy artwork bucket policy (eu-west-1)
+        run: |
+          aws cloudformation deploy \
+            --template-file artwork-bucket-policy.yaml \
+            --stack-name Maxi80Backend-2025-ArtworkPolicy \
+            --region eu-west-1 \
+            --no-fail-on-empty-changeset
+
       # Deploy the prebuilt zips. Uses the `ci` config env (no local profile, unlike
       # `dev`), non-interactive, and fails the job on any real error but not on the
       # "no changes to deploy" case.

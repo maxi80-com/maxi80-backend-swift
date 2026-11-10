@@ -149,12 +149,22 @@ struct MetadataParserTests {
         arguments: [
             ("07h-10h Le Maxi Ptit Dej Maxi 80", "07h", "10h Le Maxi Ptit Dej Maxi 80"),
             ("Dj BOLLACHA MEGAMIX WEEKEND", "Maxi80", "Dj BOLLACHA MEGAMIX WEEKEND"),
+            ("Dj Bollacha Le Megamix - Exclusivité Maxi 80", "Dj Bollacha Le Megamix", "Exclusivité Maxi 80"),
+            ("IN THE MIX avec DJ LUCKY", "Maxi80", "IN THE MIX avec DJ LUCKY"),
+            ("Maxi Club avec Dj Lucky", "Maxi80", "Maxi Club avec Dj Lucky"),
             ("Jouez au Grand Quiz des Années 80 !", "Maxi80", "Jouez au Grand Quiz des Années 80 !"),
             ("L'Essentiel de l'Actu en 2 minutes", "Maxi80", "L'Essentiel de l'Actu en 2 minutes"),
             ("MAXI80 - LE POINT METEO", "Maxi80", "LE POINT METEO"),
             ("MUSIC & NEWS AVEC STEF SUR MAXI80 WEEKEND", "Maxi80", "MUSIC & NEWS AVEC STEF SUR MAXI80 WEEKEND"),
             ("SEB SUR MAXI 80 - 1 TUBE ET PUIS C TOUT", "SEB SUR MAXI 80", "1 TUBE ET PUIS C TOUT"),
             ("Votre Horoscope sur MAXI 80", "Maxi80", "Votre Horoscope sur MAXI 80"),
+            ("Maxi80 - Le Meilleur Son 80s", "Maxi80", "Le Meilleur Son 80s"),
+            ("Maxi 80 - Eighties Best Music", "Maxi80", "Eighties Best Music"),
+            (
+                "Téléchargez notre Appli gratuite dispo sur AppStore et PlayStore", "Maxi80",
+                "Téléchargez notre Appli gratuite dispo sur AppStore et PlayStore"
+            ),
+            ("Santé Bien-Etre sur Maxi 80", "Santé Bien", "Etre sur Maxi 80"),
         ]
     )
     func testShowStreamTitles(input: String, expectedArtist: String, expectedTitle: String) {
