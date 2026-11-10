@@ -94,8 +94,10 @@ dependencies.
 
 - `GET /station` — returns the hardcoded `Station.default` (station name, stream URL, descriptions)
   plus an **optional** `features` object of runtime feature flags (see below).
-- `GET /artwork?artist=&title=` — HEADs `v2/<artist>/<title>/artwork.jpg`; returns a **pre-signed
-  GET URL** if present, else `204 No Content`.
+- `GET /artwork?artist=&title=` — HEADs `v2/<artist>/<title>/artwork.jpg`; if present returns a
+  stable **CloudFront URL** (`ARTWORK_BASE_URL`, the stack's `ArtworkDistribution`), or a
+  **pre-signed S3 GET URL** when that env var is empty; else `204 No Content`. CloudFront reads the
+  bucket via OAC; its bucket policy lives outside the stack (`make set-artwork-bucket-policy`).
 - `GET /history` — streams `v2/history.json` back verbatim; `{"entries":[]}` if absent.
 
 All three are behind the Lambda authorizer; missing query params throw `QueryParameterError` → 400.
@@ -166,7 +168,7 @@ v2/
   branch so a missing-track incident is diagnosable from logs alone.
 - **AWS access** goes through the adapters in `Maxi80Backend/AWS/`, using the shared `AWSClient`.
   Environment overrides: `AWS_REGION`, `S3_BUCKET`, `KEY_PREFIX`, `MAX_HISTORY_SIZE`, `STREAM_URL`,
-  `URL_EXPIRATION`, `API_KEY_PARAMETER`, `SECRETS`, `FEATURE_FLAGS`.
+  `URL_EXPIRATION`, `ARTWORK_BASE_URL`, `API_KEY_PARAMETER`, `SECRETS`, `FEATURE_FLAGS`.
 - **Dependencies** are edited directly in `Package.swift`; `Package.resolved` pins the lambda-kit
   fork commit. Regenerate Soto clients with `scripts/generate-soto-services.sh`, don't hand-edit them.
 - Run `make format` before committing.

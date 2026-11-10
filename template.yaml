@@ -17,6 +17,10 @@ Parameters:
    MetadataBucket:
       Type: String
       Description: Name of the S3 bucket used to store collected Icecast metadata and history
+   MetadataBucketRegion:
+      Type: String
+      Default: eu-west-1
+      Description: Region of MetadataBucket (it is not created by this stack), used for the CloudFront origin
 
 Resources:
 
@@ -87,6 +91,9 @@ Resources:
                S3_BUCKET: !Ref MetadataBucket
                KEY_PREFIX: v2
                URL_EXPIRATION: "3600"
+               # /artwork returns stable CloudFront URLs instead of pre-signed S3 URLs. Set to ""
+               # to fall back to pre-signed URLs.
+               ARTWORK_BASE_URL: !Sub "https://${ArtworkDistribution.DomainName}"
                # Runtime feature flags served in the /station response, as a comma-separated list
                # of name=bool pairs (lower_snake_case names, true/false or 1/0). An empty string
                # means no `features` key in the payload — the pre-flags behaviour older app
@@ -163,6 +170,58 @@ Resources:
       Metadata:
          BuildMethod: makefile
 
+   # CloudFront in front of the artwork bucket. S3 internet egress was ~99% of the S3 bill
+   # (~120 GB/month of artwork); CloudFront's free tier covers 1 TB/month, and its cache plus the
+   # stable URLs it enables cut origin reads too. Only `v2/*/artwork.jpg` is readable through it:
+   # the bucket policy granting this distribution access is NOT managed here, because the bucket
+   # lives in eu-west-1 outside this eu-central-1 stack — see `make set-artwork-bucket-policy`.
+   ArtworkOriginAccessControl:
+      Type: AWS::CloudFront::OriginAccessControl
+      Properties:
+         OriginAccessControlConfig:
+            Name: !Sub "${AWS::StackName}-artwork"
+            OriginAccessControlOriginType: s3
+            SigningBehavior: always
+            SigningProtocol: sigv4
+
+   ArtworkResponseHeadersPolicy:
+      Type: AWS::CloudFront::ResponseHeadersPolicy
+      Properties:
+         ResponseHeadersPolicyConfig:
+            Name: !Sub "${AWS::StackName}-artwork-cache"
+            # The objects carry no Cache-Control; give clients one so URLCache reuses artwork.
+            CustomHeadersConfig:
+               Items:
+                  - Header: Cache-Control
+                    Value: "public, max-age=86400"
+                    Override: false
+
+   ArtworkDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+         DistributionConfig:
+            Comment: Maxi80 artwork
+            Enabled: true
+            HttpVersion: http2and3
+            # The audience is French-speaking Europe; edges in Europe/North America suffice.
+            PriceClass: PriceClass_100
+            Origins:
+               - Id: ArtworkBucket
+                 # Regional endpoint: the bucket is not in the stack's region.
+                 DomainName: !Sub "${MetadataBucket}.s3.${MetadataBucketRegion}.amazonaws.com"
+                 OriginAccessControlId: !GetAtt ArtworkOriginAccessControl.Id
+                 S3OriginConfig:
+                    OriginAccessIdentity: ""
+            DefaultCacheBehavior:
+               TargetOriginId: ArtworkBucket
+               ViewerProtocolPolicy: redirect-to-https
+               AllowedMethods: [GET, HEAD]
+               CachedMethods: [GET, HEAD]
+               Compress: false
+               # Managed-CachingOptimized
+               CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+               ResponseHeadersPolicyId: !Ref ArtworkResponseHeadersPolicy
+
    # SNS Topic for alerts
    Maxi80AlertsTopic:
       Type: AWS::SNS::Topic
@@ -231,6 +290,12 @@ Outputs:
    ApiUrl:
       Description: HTTP API endpoint URL
       Value: !Sub "https://${Maxi80HttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
+   ArtworkDistributionArn:
+      Description: CloudFront distribution serving artwork (used by make set-artwork-bucket-policy)
+      Value: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${ArtworkDistribution}"
+   ArtworkBaseUrl:
+      Description: Base URL of artwork served through CloudFront
+      Value: !Sub "https://${ArtworkDistribution.DomainName}"
    AlertsTopicArn:
       Description: SNS Topic ARN for monitoring alerts
       Value: !Ref Maxi80AlertsTopic
